@@ -371,7 +371,7 @@ for (size_t k = 0; k < N; ++k) {
     }
     std::cout << std::endl;
     std::cout << "=== Board State: ===\n" << std::endl;
-    
+    printBoard();
     // ─── Logging: use the ORIGINAL requests ────────────────────────────────────
     std::cout <<"Logging File of GM STATE "<<std::endl;
 

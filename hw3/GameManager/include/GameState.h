@@ -42,6 +42,7 @@ public:
     bool        isGameOver()     const;
     std::string getResultString() const;
 
+    std::size_t getMaxSteps() const {return max_steps_;}
     // Advance mechanics
     std::string advanceOneTurn();
 
@@ -123,4 +124,12 @@ private:
     std::map<std::pair<int,int>, std::vector<std::size_t>> positionMap_;
 };
 
+
 } // namespace GameManager_315634022
+
+
+
+
+
+
+

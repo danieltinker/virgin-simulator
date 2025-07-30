@@ -30,7 +30,7 @@ ActionRequest TankAlgorithm_315634022::getAction() {
         return ActionRequest::GetBattleInfo;
     }
     // 2) if got view just shoot!
-    return ActionRequest::Shoot;
+    return ActionRequest::GetBattleInfo;
 }
 
 

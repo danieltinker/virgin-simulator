@@ -100,37 +100,49 @@ void MyGameManager_315634022::gameLoop() {
     }
 }
 
-// GameResult MyGameManager_315634022::finalize() {
-//         std::cout << "GM_315634022 Finalize!!!" << std::endl;
-//         FinalBoardView fbv{ state_->getBoard() };
-//         std::cout << "GM_315634022 Finalize!!!2"  << std::endl;
-//     return fbv.toResult();
-// }
-
 GameResult MyGameManager_315634022::finalize() {
-    std::cout << "[GM] Finalize: building FinalBoardView…\n";
-    FinalBoardView fbv{ state_->getBoard() };
+    // --- build a fully‑populated GameResult ---
+    const Board& B = state_->getBoard();
 
-    std::cout << "[GM] Finalize: converting to GameResult…\n";
-    GameResult gr = fbv.toResult();
-
-    if (!gr.gameState) {
-        std::cerr << "[ERROR] GameResult.gameState is STILL null!\n";
-    } else {
-        std::cout << "[DEBUG] gameState populated; dumping final board snapshot:\n";
-        auto* sv = gr.gameState.get();
-        auto H = state_->getBoard().getHeight();
-        auto W = state_->getBoard().getWidth();
-        for (int y = 0; y < H; ++y) {
-            for (int x = 0; x < W; ++x) {
-                std::cout << sv->getObjectAt(x, y);
-            }
-            std::cout << '\n';
-        }
+    // 1) count remaining tanks
+    size_t a1 = 0, a2 = 0;
+    for (size_t y = 0; y < B.getRows(); ++y) {
+      for (size_t x = 0; x < B.getCols(); ++x) {
+        auto c = B.getCell(int(x), int(y)).content;
+        if (c == CellContent::TANK1) ++a1;
+        else if (c == CellContent::TANK2) ++a2;
+      }
     }
 
+    // 2) decide winner (0=tie, 1=Player1, 2=Player2)
+    int winner = 0;
+    if      (a1 == 0 && a2 == 0) winner = 0;
+    else if (a1 == 0)            winner = 2;
+    else if (a2 == 0)            winner = 1;
+    else                          winner = 0;  // tie by steps
+
+    // 3) pick the correct Reason enum
+    GameResult::Reason reason;
+    if (a1 == 0 || a2 == 0)        reason = GameResult::ALL_TANKS_DEAD;
+    else if (state_->getCurrentTurn() >= state_->getMaxSteps()) 
+                                   reason = GameResult::MAX_STEPS;
+    else                            reason = GameResult::ZERO_SHELLS;
+
+    // 4) how many rounds actually played
+    size_t rounds = state_->getCurrentTurn();
+
+    // 5) build our final satellite view of the board
+    FinalBoardView fbv{ B };
+    GameResult gr = fbv.toResult();   // this now just gives us gr.gameState
+
+    // 6) overwrite the rest of the fields
+    gr.winner          = winner;
+    gr.reason          = reason;
+    gr.rounds          = rounds;
+    gr.remaining_tanks = { a1, a2 };
+
     return gr;
-}
+ }
 
 // Register the game manager
 REGISTER_GAME_MANAGER(MyGameManager_315634022)
