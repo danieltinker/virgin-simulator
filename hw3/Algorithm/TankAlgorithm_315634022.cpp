@@ -14,7 +14,7 @@ TankAlgorithm_315634022::TankAlgorithm_315634022(int playerIndex, int /*tankInde
 // ——— updateBattleInfo ————————————————————————————————————————————————
 void TankAlgorithm_315634022::updateBattleInfo(BattleInfo &baseInfo) {
     // We know baseInfo is actually MyBattleInfo
-    std:: cout <<"my direction in life is" << direction_ << std::endl;
+    // std:: cout <<"my direction in life is" << direction_ << std::endl;
     lastInfo_ = static_cast<MyBattleInfo&>(baseInfo);
     if (shellsLeft_ < 0) {
         shellsLeft_ = int(lastInfo_.shellsRemaining);
@@ -25,6 +25,9 @@ void TankAlgorithm_315634022::updateBattleInfo(BattleInfo &baseInfo) {
 // ——— getAction —————————————————————————————————————————————————————————
 ActionRequest TankAlgorithm_315634022::getAction() {
     // 1) first thing first: ask for view once
+    if(direction_){
+    
+    }
     if (needView_) {
         needView_ = false;
         return ActionRequest::GetBattleInfo;

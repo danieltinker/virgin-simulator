@@ -3,13 +3,53 @@
 #include <chrono>
 #include <sstream>
 #include <iomanip>
+#include <mutex>
+#include <thread>
 #include "FinalBoardView.h"
 
 using namespace GameManager_315634022;
 
+// ——————————————————————————————————————————————————————
+// Professional Debug Logging System
+// ——————————————————————————————————————————————————————
+
+static std::mutex g_debug_mutex;
+
+// Thread-safe debug print with component identification
+#define DEBUG_PRINT(component, function, message, debug_flag) \
+    do { \
+        if (debug_flag) { \
+            std::lock_guard<std::mutex> lock(g_debug_mutex); \
+            std::cout << "[T" << std::this_thread::get_id() << "] [" << component << "] [" << function << "] " << message << std::endl; \
+        } \
+    } while(0)
+
+// Thread-safe info print for important operations
+#define INFO_PRINT(component, function, message) \
+    do { \
+        std::lock_guard<std::mutex> lock(g_debug_mutex); \
+        std::cout << "[T" << std::this_thread::get_id() << "] [INFO] [" << component << "] [" << function << "] " << message << std::endl; \
+    } while(0)
+
+// Thread-safe warning print
+#define WARN_PRINT(component, function, message) \
+    do { \
+        std::lock_guard<std::mutex> lock(g_debug_mutex); \
+        std::cerr << "[T" << std::this_thread::get_id() << "] [WARN] [" << component << "] [" << function << "] " << message << std::endl; \
+    } while(0)
+
+// Thread-safe error print
+#define ERROR_PRINT(component, function, message) \
+    do { \
+        std::lock_guard<std::mutex> lock(g_debug_mutex); \
+        std::cerr << "[T" << std::this_thread::get_id() << "] [ERROR] [" << component << "] [" << function << "] " << message << std::endl; \
+    } while(0)
+
 MyGameManager_315634022::MyGameManager_315634022(bool verbose)
   : verbose_(verbose), state_(nullptr)
-{}
+{
+    DEBUG_PRINT("GAMEMANAGER", "constructor", "GameManager_315634022 instance created", verbose_);
+}
 
 GameResult MyGameManager_315634022::run(
     size_t map_width,
@@ -25,18 +65,32 @@ GameResult MyGameManager_315634022::run(
     TankAlgorithmFactory player1_tank_algo_factory,    // Fixed: parameter names
     TankAlgorithmFactory player2_tank_algo_factory     // Fixed: parameter names
 ) {
-    std::cout << "GameManager_315634022 is now up and running..." <<std::endl;
-    // prepareLog(map_name);
+    INFO_PRINT("GAMEMANAGER", "run", "GameManager_315634022 starting game execution");
+    DEBUG_PRINT("GAMEMANAGER", "run", 
+        "Game parameters - Map: " + map_name + 
+        ", Size: " + std::to_string(map_width) + "x" + std::to_string(map_height) + 
+        ", MaxSteps: " + std::to_string(max_steps) + 
+        ", NumShells: " + std::to_string(num_shells) + 
+        ", Players: " + name1 + " vs " + name2, verbose_);
+    
     prepareLog(map_name, name1, name2); 
     initializeGame(map_width, map_height, map, map_name, max_steps, num_shells,
                    player1, name1, player2, name2, 
                    player1_tank_algo_factory, player2_tank_algo_factory);
     gameLoop();
-    return finalize();
+    GameResult result = finalize();
+    
+    INFO_PRINT("GAMEMANAGER", "run", "Game execution completed successfully");
+    return result;
 }
 
 void MyGameManager_315634022::prepareLog(const std::string& map_name, const std::string& algo1_name, const std::string& algo2_name) {
-    if (!verbose_) return;
+    DEBUG_PRINT("LOGMANAGER", "prepareLog", "Preparing log file for verbose output", verbose_);
+    
+    if (!verbose_) {
+        DEBUG_PRINT("LOGMANAGER", "prepareLog", "Verbose mode disabled, skipping log file creation", false);
+        return;
+    }
     
     // Extract just the filename without path and extension from map_name
     std::string clean_map_name = map_name;
@@ -66,6 +120,9 @@ void MyGameManager_315634022::prepareLog(const std::string& map_name, const std:
     std::string clean_algo1 = cleanAlgoName(algo1_name);
     std::string clean_algo2 = cleanAlgoName(algo2_name);
     
+    DEBUG_PRINT("LOGMANAGER", "prepareLog", 
+        "Cleaned names - Map: " + clean_map_name + ", Algo1: " + clean_algo1 + ", Algo2: " + clean_algo2, verbose_);
+    
     auto now = std::chrono::system_clock::now();
     std::time_t t = std::chrono::system_clock::to_time_t(now);
     std::ostringstream ss;
@@ -76,14 +133,16 @@ void MyGameManager_315634022::prepareLog(const std::string& map_name, const std:
        << std::put_time(std::localtime(&t), "%Y%m%d_%H%M%S")
        << ".txt";
     
-    log_file_.open(ss.str());
+    std::string log_filename = ss.str();
+    log_file_.open(log_filename);
     
     if (!log_file_.is_open()) {
-        std::cerr << "Failed to open log file: " << ss.str() << std::endl;
+        ERROR_PRINT("LOGMANAGER", "prepareLog", "Failed to open log file: " + log_filename);
     } else {
-        std::cout << "Log file opened successfully: " << ss.str() << std::endl;
+        INFO_PRINT("LOGMANAGER", "prepareLog", "Log file created successfully: " + log_filename);
     }
 }
+
 void MyGameManager_315634022::initializeGame(
     size_t width,
     size_t height,
@@ -98,13 +157,18 @@ void MyGameManager_315634022::initializeGame(
     TankAlgorithmFactory f1,
     TankAlgorithmFactory f2
 ) {
+    DEBUG_PRINT("GAMEMANAGER", "initializeGame", "Starting game initialization", verbose_);
+    DEBUG_PRINT("GAMEMANAGER", "initializeGame", 
+        "Board dimensions: " + std::to_string(width) + "x" + std::to_string(height), verbose_);
+    
     // 1) Build and load the board
-    std::cout << "GM_315634022: Getting Ready to Initilize & Load Game Board from SatView" << std::endl;
-    board_ = Board(height,width);
+    INFO_PRINT("BOARDMANAGER", "initializeGame", "Initializing and loading game board from SatelliteView");
+    board_ = Board(height, width);
     board_.loadFromSatelliteView(satellite_view);
-    std::cout << "GM_315634022: Finished Initilize & Load Game Board from SatView \n Creating GameState..." << std::endl;
+    DEBUG_PRINT("BOARDMANAGER", "initializeGame", "Board loaded successfully from SatelliteView", verbose_);
     
     // 2) Initialize the GameState with the parsed Board using make_unique
+    INFO_PRINT("GAMESTATE", "initializeGame", "Creating GameState instance");
     state_ = std::make_unique<GameState>(
         std::move(board_),
         map_name,
@@ -115,42 +179,58 @@ void MyGameManager_315634022::initializeGame(
         f1, f2,
         verbose_
     );
+    
+    DEBUG_PRINT("GAMEMANAGER", "initializeGame", "Game initialization completed successfully", verbose_);
 }
 
 void MyGameManager_315634022::gameLoop() {
+    INFO_PRINT("GAMELOOP", "gameLoop", "Starting main game loop");
+    
     std::size_t turn = 1;
     while (!state_->isGameOver()) {
-        std::cout << "GM_315634022 Game Loop Turn = "<< turn<< std::endl;
+        DEBUG_PRINT("GAMELOOP", "gameLoop", "Executing turn " + std::to_string(turn), verbose_);
+        
         std::string actions = state_->advanceOneTurn();
-        // state_->advanceOneTurn();
+        
         if (verbose_) {
-            // log_file_ << state_->getResultString() << "\n";
+            DEBUG_PRINT("GAMELOOP", "gameLoop", "Writing turn actions to log file", verbose_);
             log_file_ << actions << std::endl;
         }
+        
         turn++;
     }
-     // 4) Final board + result
-     std::string resultStr = state_->getResultString();
-     std::cout << resultStr << "\n";
-     if (verbose_) {
+    
+    // Final board + result
+    std::string resultStr = state_->getResultString();
+    INFO_PRINT("GAMELOOP", "gameLoop", "Game completed: " + resultStr);
+    
+    if (verbose_) {
+        DEBUG_PRINT("LOGMANAGER", "gameLoop", "Writing final results to log file and closing", verbose_);
         log_file_ << resultStr << "\n";
         log_file_.close();
     }
+    
+    DEBUG_PRINT("GAMELOOP", "gameLoop", "Game loop completed after " + std::to_string(turn - 1) + " turns", verbose_);
 }
 
 GameResult MyGameManager_315634022::finalize() {
+    DEBUG_PRINT("GAMEMANAGER", "finalize", "Starting game result finalization", verbose_);
+    
     // --- build a fully‑populated GameResult ---
     const Board& B = state_->getBoard();
 
     // 1) count remaining tanks
     size_t a1 = 0, a2 = 0;
     for (size_t y = 0; y < B.getRows(); ++y) {
-      for (size_t x = 0; x < B.getCols(); ++x) {
-        auto c = B.getCell(int(x), int(y)).content;
-        if (c == CellContent::TANK1) ++a1;
-        else if (c == CellContent::TANK2) ++a2;
-      }
+        for (size_t x = 0; x < B.getCols(); ++x) {
+            auto c = B.getCell(int(x), int(y)).content;
+            if (c == CellContent::TANK1) ++a1;
+            else if (c == CellContent::TANK2) ++a2;
+        }
     }
+
+    DEBUG_PRINT("GAMEMANAGER", "finalize", 
+        "Tank count - Player1: " + std::to_string(a1) + ", Player2: " + std::to_string(a2), verbose_);
 
     // 2) decide winner (0=tie, 1=Player1, 2=Player2)
     int winner = 0;
@@ -169,7 +249,13 @@ GameResult MyGameManager_315634022::finalize() {
     // 4) how many rounds actually played
     size_t rounds = state_->getCurrentTurn();
 
+    DEBUG_PRINT("GAMEMANAGER", "finalize", 
+        "Game outcome - Winner: " + std::to_string(winner) + 
+        ", Reason: " + std::to_string(static_cast<int>(reason)) + 
+        ", Rounds: " + std::to_string(rounds), verbose_);
+
     // 5) build our final satellite view of the board
+    DEBUG_PRINT("GAMEMANAGER", "finalize", "Building final board view", verbose_);
     FinalBoardView fbv{ B };
     GameResult gr = fbv.toResult();   // this now just gives us gr.gameState
 
@@ -179,8 +265,9 @@ GameResult MyGameManager_315634022::finalize() {
     gr.rounds          = rounds;
     gr.remaining_tanks = { a1, a2 };
 
+    INFO_PRINT("GAMEMANAGER", "finalize", "Game result finalization completed successfully");
     return gr;
- }
+}
 
 // Register the game manager
 REGISTER_GAME_MANAGER(MyGameManager_315634022)

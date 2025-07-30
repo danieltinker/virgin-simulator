@@ -1,4 +1,0 @@
-GetBattleInfo, Shoot (ignored)
-GetBattleInfo, Shoot (ignored)
-GetBattleInfo, Shoot (ignored)
-Tie, reached max steps=3, player1 has 1, player2 has 1
