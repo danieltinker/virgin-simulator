@@ -32,7 +32,8 @@ public:
     ) override;
 
 private:
-    void prepareLog(const std::string& map_name);
+    // void prepareLog(const std::string& map_name);
+    void prepareLog(const std::string& map_name, const std::string& algo1_name, const std::string& algo2_name);
     void initializeGame(
         size_t width,
         size_t height,

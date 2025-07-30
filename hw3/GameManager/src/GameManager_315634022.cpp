@@ -26,7 +26,8 @@ GameResult MyGameManager_315634022::run(
     TankAlgorithmFactory player2_tank_algo_factory     // Fixed: parameter names
 ) {
     std::cout << "GameManager_315634022 is now up and running..." <<std::endl;
-    prepareLog(map_name);
+    // prepareLog(map_name);
+    prepareLog(map_name, name1, name2); 
     initializeGame(map_width, map_height, map, map_name, max_steps, num_shells,
                    player1, name1, player2, name2, 
                    player1_tank_algo_factory, player2_tank_algo_factory);
@@ -34,18 +35,55 @@ GameResult MyGameManager_315634022::run(
     return finalize();
 }
 
-void MyGameManager_315634022::prepareLog(const std::string& map_name) {
+void MyGameManager_315634022::prepareLog(const std::string& map_name, const std::string& algo1_name, const std::string& algo2_name) {
     if (!verbose_) return;
+    
+    // Extract just the filename without path and extension from map_name
+    std::string clean_map_name = map_name;
+    size_t last_slash = clean_map_name.find_last_of("/\\");
+    if (last_slash != std::string::npos) {
+        clean_map_name = clean_map_name.substr(last_slash + 1);
+    }
+    size_t last_dot = clean_map_name.find_last_of(".");
+    if (last_dot != std::string::npos) {
+        clean_map_name = clean_map_name.substr(0, last_dot);
+    }
+    
+    // Clean algorithm names (remove path and extension)
+    auto cleanAlgoName = [](const std::string& name) {
+        std::string clean = name;
+        size_t last_slash = clean.find_last_of("/\\");
+        if (last_slash != std::string::npos) {
+            clean = clean.substr(last_slash + 1);
+        }
+        size_t last_dot = clean.find_last_of(".");
+        if (last_dot != std::string::npos) {
+            clean = clean.substr(0, last_dot);
+        }
+        return clean;
+    };
+    
+    std::string clean_algo1 = cleanAlgoName(algo1_name);
+    std::string clean_algo2 = cleanAlgoName(algo2_name);
+    
     auto now = std::chrono::system_clock::now();
     std::time_t t = std::chrono::system_clock::to_time_t(now);
     std::ostringstream ss;
     ss << "GM_315634022_log_" 
-       << map_name << "_"
+       << clean_map_name << "_"
+       << clean_algo1 << "_vs_" 
+       << clean_algo2 << "_"
        << std::put_time(std::localtime(&t), "%Y%m%d_%H%M%S")
        << ".txt";
+    
     log_file_.open(ss.str());
+    
+    if (!log_file_.is_open()) {
+        std::cerr << "Failed to open log file: " << ss.str() << std::endl;
+    } else {
+        std::cout << "Log file opened successfully: " << ss.str() << std::endl;
+    }
 }
-
 void MyGameManager_315634022::initializeGame(
     size_t width,
     size_t height,
@@ -87,7 +125,7 @@ void MyGameManager_315634022::gameLoop() {
         // state_->advanceOneTurn();
         if (verbose_) {
             // log_file_ << state_->getResultString() << "\n";
-            log_file_ << actions << "\n";
+            log_file_ << actions << std::endl;
         }
         turn++;
     }
