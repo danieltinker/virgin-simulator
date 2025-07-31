@@ -139,7 +139,7 @@ void MyGameManager_315634022::prepareLog(const std::string& map_name, const std:
     if (!log_file_.is_open()) {
         ERROR_PRINT("LOGMANAGER", "prepareLog", "Failed to open log file: " + log_filename);
     } else {
-        INFO_PRINT("LOGMANAGER", "prepareLog", "Log file created successfully: " + log_filename);
+        DEBUG_PRINT("LOGMANAGER", "prepareLog", "Log file created successfully: " + log_filename);
     }
 }
 

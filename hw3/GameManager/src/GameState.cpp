@@ -315,7 +315,8 @@ std::string GameState::advanceOneTurn() {
     // Snapshot the original requests for logging
     std::vector<ActionRequest> logActions = actions;
     
-    INFO_PRINT("BACKWARDLOGIC", "advanceOneTurn", "Processing backward movement delay logic");
+    INFO_PRINT("GAMELOGICS", "advanceOneTurn", "Applying Tank Actions Logic");
+    // INFO_PRINT("BACKWARDLOGIC", "advanceOneTurn", "Processing backward movement delay logic");
 
     // 2) Backward‐delay logic (2 turns idle, 3rd turn executes)
     for (size_t k = 0; k < N; ++k) {
@@ -378,29 +379,29 @@ std::string GameState::advanceOneTurn() {
     }
 
     // 3) Process game mechanics
-    INFO_PRINT("GAMELOGIC", "advanceOneTurn", "Applying tank rotations");
+    // INFO_PRINT("GAMELOGIC", "advanceOneTurn", "Applying tank rotations");
     applyTankRotations(actions);
     
-    INFO_PRINT("GAMELOGIC", "advanceOneTurn", "Handling tank-mine collisions");
+    // INFO_PRINT("GAMELOGIC", "advanceOneTurn", "Handling tank-mine collisions");
     handleTankMineCollisions();
 
-    INFO_PRINT("GAMELOGIC", "advanceOneTurn", "Updating tank cooldowns");
+    // INFO_PRINT("GAMELOGIC", "advanceOneTurn", "Updating tank cooldowns");
     updateTankCooldowns();
 
-    INFO_PRINT("GAMELOGIC", "advanceOneTurn", "Confirming backward moves");
+    // INFO_PRINT("GAMELOGIC", "advanceOneTurn", "Confirming backward moves");
     confirmBackwardMoves(ignored, actions);
 
-    INFO_PRINT("GAMELOGIC", "advanceOneTurn", "Updating shell positions");
+    // INFO_PRINT("GAMELOGIC", "advanceOneTurn", "Updating shell positions");
     updateShellsWithOverrunCheck();
     resolveShellCollisions();
 
-    INFO_PRINT("GAMELOGIC", "advanceOneTurn", "Processing shooting actions");
+    // INFO_PRINT("GAMELOGIC", "advanceOneTurn", "Processing shooting actions");
     handleShooting(ignored, actions);
 
-    INFO_PRINT("GAMELOGIC", "advanceOneTurn", "Updating tank positions");
+    // INFO_PRINT("GAMELOGIC", "advanceOneTurn", "Updating tank positions");
     updateTankPositionsOnBoard(ignored, killed, actions);
 
-    INFO_PRINT("GAMELOGIC", "advanceOneTurn", "Cleaning up destroyed entities");
+    // INFO_PRINT("GAMELOGIC", "advanceOneTurn", "Cleaning up destroyed entities");
     filterRemainingShells();
     cleanupDestroyedEntities();
 
