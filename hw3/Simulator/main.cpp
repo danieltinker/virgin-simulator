@@ -767,9 +767,9 @@ static int runCompetition(const Config& cfg) {
                     auto gm = gmEntry.factory(cfg.verbose);
                     auto& A = *(algoReg.begin() + i);
                     auto& B = *(algoReg.begin() + j);
-                    auto p1 = A.createPlayer(0,0,0,mSteps,nShells);
+                    auto p1 = A.createPlayer(0,rows,cols,mSteps,nShells);
                     auto a1 = A.createTankAlgorithm(0,0);
-                    auto p2 = B.createPlayer(1,0,0,mSteps,nShells);
+                    auto p2 = B.createPlayer(1,rows,cols,mSteps,nShells);
                     auto a2 = B.createTankAlgorithm(1,0);
 
                     DEBUG_PRINT("GAMETHREAD", "worker", "Created players and algorithms, executing game", cfg.debug);
