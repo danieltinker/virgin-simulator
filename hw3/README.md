@@ -1,3 +1,12 @@
+# How to run:
+from root directory:
+1. run make clean && make
+2. cp ./other/Algorithm_815634022.so ./Algorithm/sos
+3. cd Simulator
+
+4. copy one of these execution commands: 
+> [!WARNING] the ones using algorithm-sos \ gamemanagers-sos  are not working
+
 # run competition (all maps, all Algos, 1 GM from /sos )
   ./simulator_315634022 --competition \
   game_maps_folder=../maps \
@@ -38,3 +47,4 @@
   algorithm1=../Algorithm/algorithms-sos/Algorithm_322213836_212054837.so \
   algorithm2=../Algorithm/algorithms-sos/Algorithm_322573304_322647603.so \
   num_threads=1
+
