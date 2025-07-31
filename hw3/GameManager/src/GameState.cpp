@@ -148,22 +148,22 @@ GameState::GameState(
                 DEBUG_PRINT("ALGOMANAGER", "constructor", 
                     "Algorithm created successfully for Tank " + std::to_string(i), verbose_);
                 
-                // Test basic algorithm functionality
-                DEBUG_PRINT("ALGOMANAGER", "constructor", 
-                    "Testing algorithm with getAction() call", verbose_);
-                try {
-                    ActionRequest test_action = algo->getAction();
-                    DEBUG_PRINT("ALGOMANAGER", "constructor", 
-                        "Algorithm test successful, returned action: " + std::to_string(static_cast<int>(test_action)), verbose_);
-                } catch (const std::exception& e) {
-                    ERROR_PRINT("ALGOMANAGER", "constructor", 
-                        "Algorithm getAction() test failed with exception: " + std::string(e.what()));
-                    throw;
-                } catch (...) {
-                    ERROR_PRINT("ALGOMANAGER", "constructor", 
-                        "Algorithm getAction() test failed with unknown exception");
-                    throw;
-                }
+                // // Test basic algorithm functionality
+                // DEBUG_PRINT("ALGOMANAGER", "constructor", 
+                //     "Testing algorithm with getAction() call", verbose_);
+                // try {
+                //     ActionRequest test_action = algo->getAction();
+                //     DEBUG_PRINT("ALGOMANAGER", "constructor", 
+                //         "Algorithm test successful, returned action: " + std::to_string(static_cast<int>(test_action)), verbose_);
+                // } catch (const std::exception& e) {
+                //     ERROR_PRINT("ALGOMANAGER", "constructor", 
+                //         "Algorithm getAction() test failed with exception: " + std::string(e.what()));
+                //     throw;
+                // } catch (...) {
+                //     ERROR_PRINT("ALGOMANAGER", "constructor", 
+                //         "Algorithm getAction() test failed with unknown exception");
+                //     throw;
+                // }
                 
                 all_tank_algorithms_.push_back(std::move(algo));
             } else {
