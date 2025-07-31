@@ -688,6 +688,10 @@ static int runCompetition(const Config& cfg) {
     // Check if we have minimum required algorithms
     if (algoPaths.size() < 2) {
         ERROR_PRINT("SIMULATOR", "runCompetition", "Need at least 2 algorithms in folder, found " + std::to_string(algoPaths.size()));
+        gmReg.removeLast(); // Clean up the GameManager entry
+        // algoHandles.clear();
+        algoReg.clear(); // Clear the AlgorithmRegistrar
+        algoPaths.clear();
         dlclose(gmH);
         for (auto h : algoHandles) {
             dlclose(h);
