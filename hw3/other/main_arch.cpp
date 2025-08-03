@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <map>
 #include <algorithm>
+#include <thread>
 
 #include "ArgParser.h"
 #include "AlgorithmRegistrar.h"
@@ -21,25 +22,61 @@
 #include "GameResult.h"
 
 namespace fs = std::filesystem;
+
 // ——————————————————————————————————————————————————————
-// Error‐logging and timestamp helpers
+// Professional Debug Logging System
 // ——————————————————————————————————————————————————————
 
+static std::mutex g_debug_mutex;
 static std::ofstream errLog;
+
+// Thread-safe debug print with component identification
+#define DEBUG_PRINT(component, function, message, debug_flag) \
+    do { \
+        if (debug_flag) { \
+            std::lock_guard<std::mutex> lock(g_debug_mutex); \
+            std::cout << "[T" << std::this_thread::get_id() << "] [" << component << "] [" << function << "] " << message << std::endl; \
+        } \
+    } while(0)
+
+// Convenience macro for when cfg is available
+#define DEBUG_PRINT_CFG(component, function, message) DEBUG_PRINT(component, function, message, cfg.debug)
+
+// Thread-safe info print for important operations
+#define INFO_PRINT(component, function, message) \
+    do { \
+        std::lock_guard<std::mutex> lock(g_debug_mutex); \
+        std::cout << "[T" << std::this_thread::get_id() << "] [INFO] [" << component << "] [" << function << "] " << message << std::endl; \
+    } while(0)
+
+// Thread-safe warning print
+#define WARN_PRINT(component, function, message) \
+    do { \
+        std::lock_guard<std::mutex> lock(g_debug_mutex); \
+        std::cerr << "[T" << std::this_thread::get_id() << "] [WARN] [" << component << "] [" << function << "] " << message << std::endl; \
+    } while(0)
+
+// Thread-safe error print
+#define ERROR_PRINT(component, function, message) \
+    do { \
+        std::lock_guard<std::mutex> lock(g_debug_mutex); \
+        std::cerr << "[T" << std::this_thread::get_id() << "] [ERROR] [" << component << "] [" << function << "] " << message << std::endl; \
+    } while(0)
 
 // Call this once at program start to open errors.txt for appending
 static void initErrorLog() {
     errLog.open("errors.txt", std::ios::app);
+    INFO_PRINT("SIMULATOR", "initErrorLog", "Error logging initialized");
 }
 
 // Mirror every error to both stderr and errors.txt
-static void logError(const std::string& msg) {
-    std::cerr << msg;
-    if (errLog.is_open()) {
-        errLog << msg;
-        errLog.flush();
-    }
-}
+// static void logError(const std::string& msg) {
+//     ERROR_PRINT("SIMULATOR", "logError", msg);
+//     if (errLog.is_open()) {
+//         errLog << msg;
+//         errLog.flush();
+//     }
+// }
 
 // Returns "YYYYMMDD_HHMMSS" for file names
 static std::string currentTimestamp() {
@@ -51,6 +88,7 @@ static std::string currentTimestamp() {
     ss << std::put_time(&tm, "%Y%m%d_%H%M%S");
     return ss.str();
 }
+
 //------------------------------------------------------------------------------
 // MapLoader: parse your assignment‐style map file
 //------------------------------------------------------------------------------
@@ -61,6 +99,8 @@ struct MapData {
 };
 
 static MapData loadMapWithParams(const std::string& path, bool debug) {
+    DEBUG_PRINT("MAPLOADER", "loadMapWithParams", "Loading map from: " + path, debug);
+    
     std::ifstream in(path);
     if (!in.is_open()) {
         throw std::runtime_error("Failed to open map file: " + path);
@@ -92,27 +132,26 @@ static MapData loadMapWithParams(const std::string& path, bool debug) {
             if (isGrid) gridLines.push_back(line);
         }
     }
-    // DEBUG: dump header
-    if (debug) {
 
-    std::cout << "[DEBUG] Parsed Map — rows=" << rows 
-              << ", cols=" << cols 
-              << ", maxSteps=" << maxSteps 
-              << ", numShells=" << numShells << "\n";
-    }
-    // guard against missing lines
+    DEBUG_PRINT("MAPLOADER", "loadMapWithParams", 
+        "Parsed map parameters - rows=" + std::to_string(rows) + 
+        ", cols=" + std::to_string(cols) + 
+        ", maxSteps=" + std::to_string(maxSteps) + 
+        ", numShells=" + std::to_string(numShells), debug);
+
+    // Guard against missing lines
     size_t actualLines = gridLines.size();
     if (actualLines < rows) {
-        std::cerr << "[WARN ] Only " << actualLines 
-                  << " grid lines, but expected " << rows << "\n";
+        WARN_PRINT("MAPLOADER", "loadMapWithParams", 
+            "Only " + std::to_string(actualLines) + " grid lines found, expected " + std::to_string(rows));
     }
-    // only iterate over what's actually present
-    if (debug) {
 
-    for (size_t r = 0; r < actualLines && r < rows; ++r) {
-        std::cout << "[DEBUG] row " << r << ": " << gridLines[r] << "\n";
+    if (debug) {
+        for (size_t r = 0; r < actualLines && r < rows; ++r) {
+            DEBUG_PRINT("MAPLOADER", "loadMapWithParams", "Grid row " + std::to_string(r) + ": " + gridLines[r], debug);
+        }
     }
-    }
+
     if (rows==0 || cols==0)
         throw std::runtime_error("Missing Rows or Cols in map header");
     if (gridLines.size() != rows) {
@@ -152,16 +191,19 @@ static MapData loadMapWithParams(const std::string& path, bool debug) {
     md.maxSteps  = maxSteps;
     md.numShells = numShells;
     md.view      = std::make_unique<MapView>(std::move(gridLines));
+    
+    DEBUG_PRINT("MAPLOADER", "loadMapWithParams", "Map loaded successfully", debug);
     return md;
 }
 
-// strip “.so” and directory from a path
+// strip ".so" and directory from a path
 static std::string stripSo(const std::string& path) {
     auto fname = fs::path(path).filename().string();
     if (auto pos = fname.rfind(".so"); pos != std::string::npos)
         return fname.substr(0, pos);
     return fname;
 }
+
 // ——————————————————————————————————————————————————————
 // Entry type for comparative‑mode results
 // ——————————————————————————————————————————————————————
@@ -178,8 +220,8 @@ struct ComparativeEntry {
       , finalState(std::move(fs))
     {}
 };
-// Format the “who won / tie and why” message
-// ————————————————————————————————————————————————————
+
+// Format the "who won / tie and why" message
 static std::string outcomeMessage(int winner, GameResult::Reason reason) {
     std::string msg;
     if (winner == 0)           msg = "Tie: ";
@@ -203,9 +245,9 @@ static bool writeComparativeFile(
     const std::string& algo2,
     const std::vector<ComparativeEntry>& entries)
 {
-    std::cout<<"got here! WritecompFile"<<std::endl;
+    INFO_PRINT("FILEWRITER", "writeComparativeFile", "Writing comparative results file");
 
-        // 1) Header key
+    // 1) Header key
     struct Outcome {
         int                       winner;
         GameResult::Reason        reason;
@@ -231,6 +273,10 @@ static bool writeComparativeFile(
         };
         groups[key].push_back(e.gmName);
     }
+
+    DEBUG_PRINT("FILEWRITER", "writeComparativeFile", 
+        "Grouped results into " + std::to_string(groups.size()) + " outcome categories", cfg.debug);
+
     // 3) Build output path
     auto ts = currentTimestamp();
     fs::path outPath = fs::path(cfg.game_managers_folder)
@@ -239,10 +285,11 @@ static bool writeComparativeFile(
     // 4) Open file (or fallback)
     std::ofstream ofs(outPath);
     if (!ofs.is_open()) {
-        logError("Error: cannot create " + outPath.string() + "\n");
-        // Fallback to stdout
+        WARN_PRINT("FILEWRITER", "writeComparativeFile", "Cannot create file " + outPath.string() + ", falling back to stdout");
         goto PRINT_STDOUT;
     }
+
+    INFO_PRINT("FILEWRITER", "writeComparativeFile", "Writing to file: " + outPath.string());
 
     // 5) Write header
     ofs << "game_map="   << cfg.game_map   << "\n";
@@ -263,9 +310,12 @@ static bool writeComparativeFile(
         // 8th+: final ASCII map
         ofs << outcome.finalState << "\n\n";
     }
+    
+    INFO_PRINT("FILEWRITER", "writeComparativeFile", "Comparative results file written successfully");
     return true;
 
 PRINT_STDOUT:
+    INFO_PRINT("FILEWRITER", "writeComparativeFile", "Writing comparative results to stdout");
     std::cout << "game_map="   << cfg.game_map   << "\n";
     std::cout << "algorithm1=" << algo1          << "\n";
     std::cout << "algorithm2=" << algo2          << "\n\n";
@@ -281,17 +331,18 @@ PRINT_STDOUT:
     return false;
 }
 
-
 // -----------------------------
 // Comparative mode
 // -----------------------------
 static int runComparative(const Config& cfg) {
+    INFO_PRINT("SIMULATOR", "runComparative", "Starting comparative mode");
+
     // 1) Load map + params
     MapData md;
     try {
         md = loadMapWithParams(cfg.game_map, cfg.debug);
     } catch (const std::exception& ex) {
-        std::cerr << "Error loading map: " << ex.what() << "\n";
+        ERROR_PRINT("SIMULATOR", "runComparative", "Error loading map: " + std::string(ex.what()));
         return 1;
     }
     SatelliteView& realMap = *md.view;
@@ -299,33 +350,33 @@ static int runComparative(const Config& cfg) {
     // 2) Load Algorithms
     auto& algoReg = AlgorithmRegistrar::get();
     std::vector<void*> algoHandles;
-    if (cfg.debug) {
-        std::cout << "[DEBUG] About to load " << 2 << " algorithm plugins\n";
-    }
+    DEBUG_PRINT_CFG("SIMULATOR", "runComparative", "Loading 2 algorithm plugins");
+    
     for (auto const& algPath : {cfg.algorithm1, cfg.algorithm2}) {
-        if (cfg.debug) {
-            std::cout << "[DEBUG]  Loading algorithm: " << algPath << "\n";
-        }
         std::string name = stripSo(algPath);
+        DEBUG_PRINT_CFG("PLUGINLOADER", "runComparative", "Loading algorithm: " + algPath);
+        
         algoReg.createAlgorithmFactoryEntry(name);
         void* h = dlopen(algPath.c_str(), RTLD_NOW);
-        if (cfg.debug) {
-            std::cout << "[DEBUG]   dlopened " << name << " @ " << h << "\n";
-        }
+        
         if (!h) {
-            std::cerr << "Error: dlopen Algo '" << name << "' failed: " << dlerror() << "\n";
+            ERROR_PRINT("PLUGINLOADER", "runComparative", "dlopen failed for algorithm '" + name + "': " + std::string(dlerror()));
             return 1;
         }
-        try { algoReg.validateLastRegistration(); }
+        
+        DEBUG_PRINT_CFG("PLUGINLOADER", "runComparative", "Algorithm '" + name + "' loaded at address " + std::to_string(reinterpret_cast<uintptr_t>(h)));
+        
+        try { 
+            algoReg.validateLastRegistration(); 
+        }
         catch (...) {
-            std::cerr << "Error: Algo registration failed for '" << name << "'\n";
+            ERROR_PRINT("PLUGINLOADER", "runComparative", "Registration validation failed for algorithm '" + name + "'");
             algoReg.removeLast();
             dlclose(h);
             return 1;
         }
-        if (cfg.debug) {
-            std::cout << "[DEBUG]   validated registration for " << name << "\n";
-        }
+        
+        DEBUG_PRINT_CFG("PLUGINLOADER", "runComparative", "Algorithm '" + name + "' registration validated");
         algoHandles.push_back(h);
     }
 
@@ -336,140 +387,134 @@ static int runComparative(const Config& cfg) {
         if (e.path().extension() == ".so")
             gmPaths.push_back(e.path().string());
     if (gmPaths.empty()) {
-        std::cerr << "Error: no .so in game_managers_folder\n";
+        ERROR_PRINT("SIMULATOR", "runComparative", "No .so files found in game_managers_folder");
         return 1;
     }
 
     std::vector<void*> gmHandles;
-std::vector<std::string> validGmPaths; // Track only successfully loaded GMs
-if (cfg.debug) {
-    std::cout << "[DEBUG] About to load GameManager plugins from '" << cfg.game_managers_folder << "'\n";
-}
-for (auto const& gmPath : gmPaths) {
-    if (cfg.debug) {
-        std::cout << "[DEBUG]  Loading GM: " << gmPath << "\n";
+    std::vector<std::string> validGmPaths; // Track only successfully loaded GMs
+    
+    DEBUG_PRINT_CFG("SIMULATOR", "runComparative", "Loading GameManager plugins from '" + cfg.game_managers_folder + "'");
+    
+    for (auto const& gmPath : gmPaths) {
+        std::string name = stripSo(gmPath);
+        DEBUG_PRINT_CFG("PLUGINLOADER", "runComparative", "Loading GameManager: " + gmPath);
+        
+        gmReg.createGameManagerEntry(name);
+        void* h = dlopen(gmPath.c_str(), RTLD_NOW);
+        if (!h) {
+            WARN_PRINT("PLUGINLOADER", "runComparative", "dlopen failed for GameManager '" + name + "': " + std::string(dlerror()));
+            gmReg.removeLast(); // Clean up the registry entry
+            continue; // Skip this GM and continue with the next one
+        }
+        
+        DEBUG_PRINT_CFG("PLUGINLOADER", "runComparative", "GameManager '" + name + "' loaded at address " + std::to_string(reinterpret_cast<uintptr_t>(h)));
+        
+        try { 
+            gmReg.validateLastRegistration(); 
+        }
+        catch (...) {
+            WARN_PRINT("PLUGINLOADER", "runComparative", "Registration validation failed for GameManager '" + name + "'");
+            gmReg.removeLast();
+            dlclose(h);
+            continue; // Skip this GM and continue with the next one
+        }
+        
+        DEBUG_PRINT_CFG("PLUGINLOADER", "runComparative", "GameManager '" + name + "' registration validated");
+        gmHandles.push_back(h);
+        validGmPaths.push_back(gmPath); // Only add successfully loaded GMs
     }
-    std::string name = stripSo(gmPath);
-    gmReg.createGameManagerEntry(name);
-    void* h = dlopen(gmPath.c_str(), RTLD_NOW);
-    if (!h) {
-        std::cerr << "Warning: dlopen GM '" << name << "' failed: " << dlerror() << "\n";
-        gmReg.removeLast(); // Clean up the registry entry
-        continue; // Skip this GM and continue with the next one
-    }
-    if (cfg.debug) {
-        std::cout << "[DEBUG]   dlopened GM " << name << " @ " << h << "\n";
-    }
-    try { 
-        gmReg.validateLastRegistration(); 
-    }
-    catch (...) {
-        std::cerr << "Warning: GM registration failed for '" << name << "'\n";
-        gmReg.removeLast();
-        dlclose(h);
-        continue; // Skip this GM and continue with the next one
-    }
-    if (cfg.debug) {
-        std::cout << "[DEBUG]   validated GM registration for " << name << "\n";
-    }
-    gmHandles.push_back(h);
-    validGmPaths.push_back(gmPath); // Only add successfully loaded GMs
-}
 
+    if (validGmPaths.empty()) {
+        ERROR_PRINT("SIMULATOR", "runComparative", "No valid GameManager plugins could be loaded");
+        return 1;
+    }
+
+    INFO_PRINT("SIMULATOR", "runComparative", "Successfully loaded " + std::to_string(validGmPaths.size()) + " GameManager(s)");
 
     // 4) Dispatch tasks
     ThreadPool pool(cfg.numThreads);
     std::mutex mtx;
-    struct Entry {
-        std::string gm, a1, a2;
-        GameResult res;
-        Entry(std::string g, std::string x, std::string y, GameResult r)
-          : gm(std::move(g)), a1(std::move(x)), a2(std::move(y)), res(std::move(r)) {}
-    };
-    // std::vector<Entry> results;
     std::vector<ComparativeEntry> results;
 
+    INFO_PRINT("THREADPOOL", "runComparative", "Starting game execution with " + std::to_string(cfg.numThreads) + " threads");
 
-    if (validGmPaths.empty()) {
-    std::cerr << "Error: no valid GameManager plugins could be loaded\n";
-    return 1;
-}
+    // Update the task dispatching loop to use validGmPaths instead of gmPaths
+    for (size_t gi = 0; gi < validGmPaths.size(); ++gi) {
+        auto& gmEntry = *(gmReg.begin() + gi);
+        auto& A = *(algoReg.begin() + 0);
+        auto& B = *(algoReg.begin() + 1);
 
-// Update the task dispatching loop to use validGmPaths instead of gmPaths
-for (size_t gi = 0; gi < validGmPaths.size(); ++gi) {
-    auto& gmEntry = *(gmReg.begin() + gi);
-    auto& A = *(algoReg.begin() + 0);
-    auto& B = *(algoReg.begin() + 1);
+        pool.enqueue([&, gi] {
+            DEBUG_PRINT_CFG("GAMETHREAD", "worker", "Starting game execution for GM index " + std::to_string(gi));
+            
+            auto gm = gmEntry.factory(cfg.verbose);
+            auto p1 = A.createPlayer(0, md.rows, md.cols, md.maxSteps, md.numShells);
+            auto a1 = A.createTankAlgorithm(0, 0);
+            auto p2 = B.createPlayer(1, md.rows, md.cols, md.maxSteps, md.numShells);
+            auto a2 = B.createTankAlgorithm(1, 0);
 
-    pool.enqueue([&, gi] {
-        auto gm = gmEntry.factory(cfg.verbose);
-        auto p1 = A.createPlayer(0, 0, 0, md.maxSteps, md.numShells);
-        auto a1 = A.createTankAlgorithm(0, 0);
-        auto p2 = B.createPlayer(1, 0, 0, md.maxSteps, md.numShells);
-        auto a2 = B.createTankAlgorithm(1, 0);
+            DEBUG_PRINT_CFG("GAMETHREAD", "worker", "Created players and algorithms, starting game run");
 
-        GameResult gr = gm->run(
-            md.cols, md.rows,
-            realMap,
-            cfg.game_map,
-            md.maxSteps, md.numShells,
-            *p1, stripSo(cfg.algorithm1),
-            *p2, stripSo(cfg.algorithm2),
-            [&](int pi,int ti){ return A.createTankAlgorithm(pi,ti); },
-            [&](int pi,int ti){ return B.createTankAlgorithm(pi,ti); }
-        );
-        std::cout <<"main, finished GM->run " << std::endl;
-        std::ostringstream ss;
-        auto* state = gr.gameState.get();
-        std::cout <<"main, got statež" << std::endl;
-        for (size_t y = 0; y < md.rows; ++y) {
-            for (size_t x = 0; x < md.cols; ++x) {
-                std::cout <<"building... my final map" << std::endl;
-                ss << state->getObjectAt(x, y);
+            GameResult gr = gm->run(
+                md.cols, md.rows,
+                realMap,
+                cfg.game_map,
+                md.maxSteps, md.numShells,
+                *p1, stripSo(cfg.algorithm1),
+                *p2, stripSo(cfg.algorithm2),
+                [&](int pi,int ti){ return A.createTankAlgorithm(pi,ti); },
+                [&](int pi,int ti){ return B.createTankAlgorithm(pi,ti); }
+            );
+            
+            DEBUG_PRINT_CFG("GAMETHREAD", "worker", "Game execution completed for GM index " + std::to_string(gi));
+            
+            std::ostringstream ss;
+            auto* state = gr.gameState.get();
+            
+            DEBUG_PRINT_CFG("GAMETHREAD", "worker", "Building final map state for GM index " + std::to_string(gi));
+            for (size_t y = 0; y < md.rows; ++y) {
+                for (size_t x = 0; x < md.cols; ++x) {
+                    ss << state->getObjectAt(x, y);
+                }
+                ss << '\n';
             }
-            ss << '\n';
-        }
-        std::cout <<"finished building my final map" << std::endl;
-        std::string finalMap = ss.str();
-        std::lock_guard<std::mutex> lock(mtx);
-        std::cout <<"results " << std::endl;
-        results.emplace_back(
-            stripSo(validGmPaths[gi]),  // gmName
-             std::move(gr),              // GameResult
-            std::move(finalMap)         // the ASCII snapshot
-        );
-    });
-}
-    std::cout << "main : pool shutdown " << std::endl;
+            
+            std::string finalMap = ss.str();
+            DEBUG_PRINT_CFG("GAMETHREAD", "worker", "Final map state built, storing results for GM index " + std::to_string(gi));
+            
+            std::lock_guard<std::mutex> lock(mtx);
+            results.emplace_back(
+                stripSo(validGmPaths[gi]),  // gmName
+                std::move(gr),              // GameResult
+                std::move(finalMap)         // the ASCII snapshot
+            );
+        });
+    }
+    
+    INFO_PRINT("THREADPOOL", "runComparative", "All tasks enqueued, waiting for completion");
     pool.shutdown();
     
-    
-    std::cout << "main : write comp file " << std::endl;
+    INFO_PRINT("SIMULATOR", "runComparative", "All games completed, writing results");
     writeComparativeFile(
         cfg,
         stripSo(cfg.algorithm1),
         stripSo(cfg.algorithm2),
         results
     );
-    std::cout << "report results " << std::endl;
+
     // 5) Report & cleanup
-    std::cout << "[Simulator] Comparative Results:\n";
+    INFO_PRINT("SIMULATOR", "runComparative", "Comparative Results Summary:");
     for (auto& e : results) {
-        std::cout << "  GM="    << e.gmName
-          << "  winner="  << e.res.winner
-          << "  reason="  << static_cast<int>(e.res.reason)
-          << "  rounds=" << e.res.rounds
-          << "\n";
+        INFO_PRINT("RESULTS", "runComparative", 
+            "GM=" + e.gmName + 
+            " winner=" + std::to_string(e.res.winner) + 
+            " reason=" + std::to_string(static_cast<int>(e.res.reason)) + 
+            " rounds=" + std::to_string(e.res.rounds));
     }
     
-    // for (auto h : gmHandles)   dlclose(h);
-    // for (auto h : algoHandles) dlclose(h);
     return 0;
 }
-
-
-
-
 
 // ——————————————————————————————————————————————————————
 // Entry type for competitive‐mode results
@@ -495,6 +540,8 @@ static bool writeCompetitionFile(
     const Config& cfg,
     const std::vector<CompetitionEntry>& results)
 {
+    INFO_PRINT("FILEWRITER", "writeCompetitionFile", "Writing competition results file");
+
     // 1) Tally scores
     std::map<std::string,int> scores;
     for (auto const& entry : results) {
@@ -521,6 +568,8 @@ static bool writeCompetitionFile(
         }
     }
 
+    DEBUG_PRINT("FILEWRITER", "writeCompetitionFile", "Calculated scores for " + std::to_string(scores.size()) + " algorithms", cfg.debug);
+
     // 2) Sort by descending score
     std::vector<std::pair<std::string,int>> sorted(scores.begin(), scores.end());
     std::sort(sorted.begin(), sorted.end(),
@@ -536,7 +585,7 @@ static bool writeCompetitionFile(
     // 4) Open file (or fallback to stdout)
     std::ofstream ofs(outPath);
     if (!ofs.is_open()) {
-        logError("Error: cannot create " + outPath.string() + "\n");
+        WARN_PRINT("FILEWRITER", "writeCompetitionFile", "Cannot create file " + outPath.string() + ", falling back to stdout");
         // fallback print
         std::cout << "game_maps_folder=" << cfg.game_maps_folder << "\n";
         std::cout << "game_manager="     << cfg.game_manager      << "\n\n";
@@ -546,6 +595,8 @@ static bool writeCompetitionFile(
         return false;
     }
 
+    INFO_PRINT("FILEWRITER", "writeCompetitionFile", "Writing to file: " + outPath.string());
+
     // 5) Write contents
     ofs << "game_maps_folder=" << cfg.game_maps_folder << "\n";
     ofs << "game_manager="     << cfg.game_manager      << "\n\n";
@@ -553,31 +604,37 @@ static bool writeCompetitionFile(
         ofs << p.first << " " << p.second << "\n";
     }
 
+    INFO_PRINT("FILEWRITER", "writeCompetitionFile", "Competition results file written successfully");
     return true;
 }
-
 
 // -----------------------------
 // Competition mode
 // -----------------------------
 static int runCompetition(const Config& cfg) {
+    INFO_PRINT("SIMULATOR", "runCompetition", "Starting competition mode");
+
     // 1) Gather maps
     std::vector<std::string> maps;
     for (auto& e : fs::directory_iterator(cfg.game_maps_folder))
         if (e.is_regular_file())
             maps.push_back(e.path().string());
     if (maps.empty()) {
-        std::cerr << "Error: no files in game_maps_folder\n";
+        ERROR_PRINT("SIMULATOR", "runCompetition", "No files found in game_maps_folder");
         return 1;
     }
+
+    DEBUG_PRINT_CFG("SIMULATOR", "runCompetition", "Found " + std::to_string(maps.size()) + " map files");
 
     // 2) Load GM (CRITICAL - must succeed)
     auto& gmReg = GameManagerRegistrar::get();
     std::string gmName = stripSo(cfg.game_manager);
+    
+    DEBUG_PRINT_CFG("PLUGINLOADER", "runCompetition", "Loading GameManager: " + cfg.game_manager);
     gmReg.createGameManagerEntry(gmName);
     void* gmH = dlopen(cfg.game_manager.c_str(), RTLD_NOW);
     if (!gmH) {
-        std::cerr << "Error: dlopen GM failed: " << dlerror() << "\n";
+        ERROR_PRINT("PLUGINLOADER", "runCompetition", "dlopen failed for GameManager: " + std::string(dlerror()));
         gmReg.removeLast();
         return 1;
     }
@@ -585,24 +642,31 @@ static int runCompetition(const Config& cfg) {
         gmReg.validateLastRegistration(); 
     }
     catch (...) {
-        std::cerr << "Error: GM registration failed for '" << gmName << "'\n";
+        ERROR_PRINT("PLUGINLOADER", "runCompetition", "GameManager registration validation failed for '" + gmName + "'");
         gmReg.removeLast();
         dlclose(gmH);
         return 1;
     }
+
+    DEBUG_PRINT_CFG("PLUGINLOADER", "runCompetition", "GameManager '" + gmName + "' loaded and validated successfully");
 
     // 3) Load Algorithms (resilient loading)
     auto& algoReg = AlgorithmRegistrar::get();
     std::vector<void*> algoHandles;
     std::vector<std::string> algoPaths; // Track only successfully loaded algorithms
     
+    DEBUG_PRINT_CFG("SIMULATOR", "runCompetition", "Loading algorithm plugins from '" + cfg.algorithms_folder + "'");
+    
     for (auto& e : fs::directory_iterator(cfg.algorithms_folder)) {
         if (e.path().extension() == ".so") {
             std::string path = e.path().string();
-            algoReg.createAlgorithmFactoryEntry(stripSo(path));
+            std::string name = stripSo(path);
+            
+            DEBUG_PRINT_CFG("PLUGINLOADER", "runCompetition", "Loading algorithm: " + path);
+            algoReg.createAlgorithmFactoryEntry(name);
             void* h = dlopen(path.c_str(), RTLD_NOW);
             if (!h) {
-                std::cerr << "Warning: dlopen Algo '" << path << "' failed\n";
+                WARN_PRINT("PLUGINLOADER", "runCompetition", "dlopen failed for algorithm '" + path + "': " + std::string(dlerror()));
                 algoReg.removeLast();
                 continue; // Skip this algorithm and continue with the next one
             }
@@ -610,11 +674,12 @@ static int runCompetition(const Config& cfg) {
                 algoReg.validateLastRegistration(); 
             }
             catch (...) {
-                std::cerr << "Warning: Algo registration failed for '" << path << "'\n";
+                WARN_PRINT("PLUGINLOADER", "runCompetition", "Registration validation failed for algorithm '" + path + "'");
                 algoReg.removeLast();
                 dlclose(h);
                 continue; // Skip this algorithm and continue with the next one
             }
+            DEBUG_PRINT_CFG("PLUGINLOADER", "runCompetition", "Algorithm '" + name + "' loaded and validated successfully");
             algoHandles.push_back(h);
             algoPaths.push_back(path);
         }
@@ -622,7 +687,11 @@ static int runCompetition(const Config& cfg) {
     
     // Check if we have minimum required algorithms
     if (algoPaths.size() < 2) {
-        std::cerr << "Error: need at least 2 algorithms in folder\n";
+        ERROR_PRINT("SIMULATOR", "runCompetition", "Need at least 2 algorithms in folder, found " + std::to_string(algoPaths.size()));
+        gmReg.removeLast(); // Clean up the GameManager entry
+        // algoHandles.clear();
+        algoReg.clear(); // Clear the AlgorithmRegistrar
+        algoPaths.clear();
         dlclose(gmH);
         for (auto h : algoHandles) {
             dlclose(h);
@@ -630,39 +699,52 @@ static int runCompetition(const Config& cfg) {
         return 1;
     }
 
+    INFO_PRINT("SIMULATOR", "runCompetition", "Successfully loaded " + std::to_string(algoPaths.size()) + " algorithm(s)");
+
     // 4) Preload maps into shared_ptrs so lambdas can capture safely
     std::vector<std::shared_ptr<SatelliteView>> mapViews;
     std::vector<size_t>                         mapRows, mapCols, mapMaxSteps, mapNumShells;
+    
+    DEBUG_PRINT_CFG("SIMULATOR", "runCompetition", "Preloading map data into shared structures");
+    
     for (auto const& mapFile : maps) {
         try {
-            MapData md = loadMapWithParams(mapFile,cfg.debug);
+            MapData md = loadMapWithParams(mapFile, cfg.debug);
             mapViews.emplace_back(std::move(md.view));
             mapCols .push_back(md.cols);
             mapRows .push_back(md.rows);
             mapMaxSteps.push_back(md.maxSteps);
             mapNumShells.push_back(md.numShells);
+            DEBUG_PRINT_CFG("MAPLOADER", "runCompetition", "Successfully preloaded map: " + mapFile);
         } catch (const std::exception& ex) {
-            std::cerr << "Warning: skipping map '" << mapFile << "': " << ex.what() << "\n";
+            WARN_PRINT("MAPLOADER", "runCompetition", "Skipping invalid map '" + mapFile + "': " + std::string(ex.what()));
         }
     }
     if (mapViews.empty()) {
-        std::cerr << "Error: no valid maps to run\n";
+        ERROR_PRINT("SIMULATOR", "runCompetition", "No valid maps to run");
         dlclose(gmH);
         return 1;
     }
 
+    INFO_PRINT("SIMULATOR", "runCompetition", "Successfully preloaded " + std::to_string(mapViews.size()) + " valid map(s)");
+
     // 5) Dispatch tasks
     ThreadPool pool(cfg.numThreads);
     std::mutex mtx;
-    struct Entry {
-        std::string mapFile, a1, a2;
-        GameResult res;
-        Entry(std::string m, std::string x, std::string y, GameResult r)
-          : mapFile(std::move(m)), a1(std::move(x)), a2(std::move(y)), res(std::move(r)) {}
-    };
-    // std::vector<Entry> results;
     std::vector<CompetitionEntry> results;
     auto& gmEntry = *gmReg.begin();
+
+    // Calculate total number of games
+    size_t totalGames = 0;
+    for (size_t i = 0; i + 1 < algoPaths.size(); ++i) {
+        for (size_t j = i + 1; j < algoPaths.size(); ++j) {
+            totalGames += mapViews.size();
+        }
+    }
+
+    INFO_PRINT("THREADPOOL", "runCompetition", 
+        "Starting execution of " + std::to_string(totalGames) + " total games with " + 
+        std::to_string(cfg.numThreads) + " threads");
 
     for (size_t mi = 0; mi < mapViews.size(); ++mi) {
         auto mapViewPtr = mapViews[mi];
@@ -676,30 +758,43 @@ static int runCompetition(const Config& cfg) {
         for (size_t i = 0; i + 1 < algoPaths.size(); ++i) {
             for (size_t j = i + 1; j < algoPaths.size(); ++j) {
                 pool.enqueue([=,&realMap,&mtx,&results,&algoReg,&gmEntry]() {
+                    std::string algo1Name = stripSo(algoPaths[i]);
+                    std::string algo2Name = stripSo(algoPaths[j]);
+                    
+                    DEBUG_PRINT("GAMETHREAD", "worker", 
+                        "Starting game: " + algo1Name + " vs " + algo2Name + " on map " + mapFile, cfg.debug);
+                    
                     auto gm = gmEntry.factory(cfg.verbose);
                     auto& A = *(algoReg.begin() + i);
                     auto& B = *(algoReg.begin() + j);
-                    auto p1 = A.createPlayer(0,0,0,mSteps,nShells);
+                    auto p1 = A.createPlayer(0,rows,cols,mSteps,nShells);
                     auto a1 = A.createTankAlgorithm(0,0);
-                    auto p2 = B.createPlayer(1,0,0,mSteps,nShells);
+                    auto p2 = B.createPlayer(1,rows,cols,mSteps,nShells);
                     auto a2 = B.createTankAlgorithm(1,0);
+
+                    DEBUG_PRINT("GAMETHREAD", "worker", "Created players and algorithms, executing game", cfg.debug);
 
                     GameResult gr = gm->run(
                         cols, rows,
                         realMap,
                         mapFile,
                         mSteps, nShells,
-                        *p1, stripSo(algoPaths[i]),
-                        *p2, stripSo(algoPaths[j]),
+                        *p1, algo1Name,
+                        *p2, algo2Name,
                         [&](int pi,int ti){ return A.createTankAlgorithm(pi,ti); },
                         [&](int pi,int ti){ return B.createTankAlgorithm(pi,ti); }
                     );
 
+                    DEBUG_PRINT("GAMETHREAD", "worker", 
+                        "Game completed: " + algo1Name + " vs " + algo2Name + 
+                        " winner=" + std::to_string(gr.winner) + 
+                        " rounds=" + std::to_string(gr.rounds), cfg.debug);
+
                     std::lock_guard<std::mutex> lock(mtx);
                     results.emplace_back(
                         mapFile,
-                        stripSo(algoPaths[i]),
-                        stripSo(algoPaths[j]),
+                        algo1Name,
+                        algo2Name,
                         std::move(gr)
                     );
                 });
@@ -707,22 +802,24 @@ static int runCompetition(const Config& cfg) {
         }
     }
 
+    INFO_PRINT("THREADPOOL", "runCompetition", "All tasks enqueued, waiting for completion");
     pool.shutdown();
+    
+    INFO_PRINT("SIMULATOR", "runCompetition", "All games completed, writing results");
     writeCompetitionFile(cfg, results);
 
     // 6) Report & cleanup
-    std::cout << "[Simulator] Competition Results:\n";
+    INFO_PRINT("SIMULATOR", "runCompetition", "Competition Results Summary:");
     for (auto& e : results) {
-        std::cout << "  map=" << e.mapFile
-                  << "  A1=" << e.a1
-                  << "  A2=" << e.a2
-                  << " => winner=" << e.res.winner
-                  << "  reason=" << static_cast<int>(e.res.reason)
-                  << "  rounds=" << e.res.rounds << "\n";
+        INFO_PRINT("RESULTS", "runCompetition", 
+            "Map=" + e.mapFile + 
+            " A1=" + e.a1 + 
+            " A2=" + e.a2 + 
+            " => winner=" + std::to_string(e.res.winner) + 
+            " reason=" + std::to_string(static_cast<int>(e.res.reason)) + 
+            " rounds=" + std::to_string(e.res.rounds));
     }
 
-    // dlclose(gmH);
-    // for (auto h : algoHandles) dlclose(h);
     return 0;
 }
 
@@ -734,9 +831,18 @@ int main(int argc, char* argv[]) {
     if (!parseArguments(argc, argv, cfg)) {
         return 1;
     }
-    // ─── Initialize our error log ────────────────────────────────
+    
+    // Initialize our error log
     initErrorLog();
-    return cfg.modeComparative
+    
+    INFO_PRINT("SIMULATOR", "main", "Starting simulator in " + 
+        std::string(cfg.modeComparative ? "comparative" : "competition") + " mode");
+    
+    int result = cfg.modeComparative
         ? runComparative(cfg)
         : runCompetition(cfg);
+        
+    INFO_PRINT("SIMULATOR", "main", "Simulator finished with exit code " + std::to_string(result));
+    
+    return result;
 }
