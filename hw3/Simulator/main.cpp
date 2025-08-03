@@ -449,9 +449,9 @@ static int runComparative(const Config& cfg) {
             DEBUG_PRINT_CFG("GAMETHREAD", "worker", "Starting game execution for GM index " + std::to_string(gi));
             
             auto gm = gmEntry.factory(cfg.verbose);
-            auto p1 = A.createPlayer(0, rows, cols, md.maxSteps, md.numShells);
+            auto p1 = A.createPlayer(0, md.rows, md.cols, md.maxSteps, md.numShells);
             auto a1 = A.createTankAlgorithm(0, 0);
-            auto p2 = B.createPlayer(1, rows, cols, md.maxSteps, md.numShells);
+            auto p2 = B.createPlayer(1, md.rows, md.cols, md.maxSteps, md.numShells);
             auto a2 = B.createTankAlgorithm(1, 0);
 
             DEBUG_PRINT_CFG("GAMETHREAD", "worker", "Created players and algorithms, starting game run");
