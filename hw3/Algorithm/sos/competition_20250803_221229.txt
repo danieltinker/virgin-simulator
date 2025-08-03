@@ -1,5 +1,0 @@
-game_maps_folder=../maps
-game_manager=GameManager_315634022
-
-Algorithm_315634022 6
-Algorithm_815634022 0
