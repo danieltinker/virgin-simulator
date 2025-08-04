@@ -98,7 +98,7 @@ void Player_315634022::updateTankWithBattleInfo(TankAlgorithm &tank,
         std::size_t selfX = 0, selfY = 0;
         
         for (std::size_t y = 0; y < rows_; ++y) {
-            DEBUG_LOG("TRACE", "Scanning row " << y << "/" << rows_);
+            // DEBUG_LOG("TRACE", "Scanning row " << y << "/" << rows_);
             
             for (std::size_t x = 0; x < cols_; ++x) {
                 // Bounds checking with detailed logging
@@ -114,16 +114,15 @@ void Player_315634022::updateTankWithBattleInfo(TankAlgorithm &tank,
                 }
                 
                 // Safe SatelliteView access
-                DEBUG_LOG("TRACE", "Reading position (" << x << "," << y << ")");
+                // DEBUG_LOG("TRACE", "Reading position (" << x << "," << y << ")");
                 char c = view.getObjectAt(x, y);
-                DEBUG_LOG("TRACE", "Position (" << x << "," << y << "): '" << c << "'");
+                // DEBUG_LOG("TRACE", "Position (" << x << "," << y << "): '" << c << "'");
                 
                 info.grid[y][x] = c;
                 
                 // Self-location detection
                 if ((playerIndex_ == 1 && c == '1') || (playerIndex_ == 2 && c == '2')) {
-                    DEBUG_LOG("INFO", "Found self at position (" << x << "," << y 
-                              << ") with character '" << c << "'");
+                    // DEBUG_LOG("INFO", "Found self at position (" << x << "," << y << ") with character '" << c << "'");
                     selfX = x;
                     selfY = y;
                     selfFound = true;
@@ -135,7 +134,7 @@ void Player_315634022::updateTankWithBattleInfo(TankAlgorithm &tank,
         if (selfFound) {
             info.selfX = selfX;
             info.selfY = selfY;
-            DEBUG_LOG("INFO", "Self position set to (" << info.selfX << "," << info.selfY << ")");
+            // DEBUG_LOG("INFO", "Self position set to (" << info.selfX << "," << info.selfY << ")");
         } else {
             DEBUG_LOG("WARNING", "Self position not found on grid for player " << playerIndex_);
         }
@@ -147,7 +146,7 @@ void Player_315634022::updateTankWithBattleInfo(TankAlgorithm &tank,
             for (std::size_t x = 0; x < cols_; ++x) {
                 row_str += info.grid[y][x];
             }
-            DEBUG_LOG("DEBUG", "Row " << y << ": '" << row_str << "'");
+            // DEBUG_LOG("DEBUG", "Row " << y << ": '" << row_str << "'");
         }
         
         // Critical: Tank algorithm update with safety checks

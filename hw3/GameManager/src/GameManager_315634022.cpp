@@ -55,15 +55,15 @@ GameResult MyGameManager_315634022::run(
     size_t map_width,
     size_t map_height,
     const SatelliteView& map,
-    string map_name,                    // Fixed: match AbstractGameManager signature
+    string map_name,                    
     size_t max_steps,
     size_t num_shells,
-    Player& player1,                    // Fixed: parameter names
-    string name1,                       // Fixed: parameter names
-    Player& player2,                    // Fixed: parameter names
-    string name2,                       // Fixed: parameter names
-    TankAlgorithmFactory player1_tank_algo_factory,    // Fixed: parameter names
-    TankAlgorithmFactory player2_tank_algo_factory     // Fixed: parameter names
+    Player& player1,                    
+    string name1,                       
+    Player& player2,                    
+    string name2,                       
+    TankAlgorithmFactory player1_tank_algo_factory,    
+    TankAlgorithmFactory player2_tank_algo_factory     
 ) {
     INFO_PRINT("GAMEMANAGER", "run", "GameManager_315634022 starting game execution");
     DEBUG_PRINT("GAMEMANAGER", "run", 
