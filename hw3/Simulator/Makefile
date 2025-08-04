@@ -45,45 +45,58 @@
 
 # # Optional: automatic clean on make
 # .PHONY: clean
-
 # === CONFIGURATION ===
 ID1 = 315634022
 OUT_EXE = simulator_$(ID1)
 
 # Compiler and flags
 CXX = g++
-CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -pedantic -g -fPIC -I../common
+CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -pedantic -g -fPIC -I../UserCommon -I../common
 
 # Platform-specific flags
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
-    LDFLAGS = 
-    LDLIBS = 
+	LDFLAGS =
+	LDLIBS =
 else
-    LDFLAGS = -rdynamic
-    LDLIBS = -ldl
+	LDFLAGS = -rdynamic
+	LDLIBS = -ldl
 endif
 
 # === SOURCE STRUCTURE ===
 SRCDIR = .
 USERCOMMONDIR = ../UserCommon
 
+# All .cpp in simulator root and userCommon (ErrorLogger etc.)
 SIMULATOR_CPP = $(wildcard $(SRCDIR)/*.cpp)
 USERCOMMON_CPP = $(wildcard $(USERCOMMONDIR)/*.cpp)
 
-OBJS = $(SIMULATOR_CPP:.cpp=.o) $(USERCOMMON_CPP:.cpp=.o)
+# Build objects into build/
+BUILD_DIR = build
+SIM_OBJS = $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(notdir $(SIMULATOR_CPP)))
+USERCOMMON_OBJS = $(patsubst $(USERCOMMONDIR)/%.cpp,$(BUILD_DIR)/UserCommon/%.o,$(USERCOMMON_CPP))
 
-# === BUILD RULES ===
+OBJS = $(SIM_OBJS) $(USERCOMMON_OBJS)
+
+# === Rules ===
 
 all: $(OUT_EXE)
 
 $(OUT_EXE): $(OBJS)
-	$(CXX) $(OBJS) $(LDFLAGS) $(LDLIBS) -o $@
+	$(CXX) $(CXXFLAGS) $(OBJS) $(LDFLAGS) $(LDLIBS) -o $@
 
-%.o: %.cpp
+# Simulator .cpp -> object
+$(BUILD_DIR)/%.o: %.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
+# UserCommon .cpp -> object (kept under build/UserCommon/)
+$(BUILD_DIR)/UserCommon/%.o: $(USERCOMMONDIR)/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -I$(USERCOMMONDIR) -c $< -o $@
+
 clean:
-	rm -f $(SRCDIR)/*.o $(USERCOMMONDIR)/*.o $(OUT_EXE)
+	rm -rf $(BUILD_DIR)
+	rm -f $(OUT_EXE)
 
 .PHONY: all clean

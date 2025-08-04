@@ -14,3 +14,5 @@ struct GameResult {
     size_t rounds; // total number of rounds
 
 };
+
+

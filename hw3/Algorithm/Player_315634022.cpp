@@ -114,15 +114,15 @@ void Player_315634022::updateTankWithBattleInfo(TankAlgorithm &tank,
                 }
                 
                 // Safe SatelliteView access
-                // DEBUG_LOG("TRACE", "Reading position (" << x << "," << y << ")");
+                DEBUG_LOG("TRACE", "Reading position (" << x << "," << y << ")");
                 char c = view.getObjectAt(x, y);
-                // DEBUG_LOG("TRACE", "Position (" << x << "," << y << "): '" << c << "'");
+                DEBUG_LOG("TRACE", "Position (" << x << "," << y << "): '" << c << "'");
                 
                 info.grid[y][x] = c;
                 
                 // Self-location detection
                 if ((playerIndex_ == 1 && c == '1') || (playerIndex_ == 2 && c == '2')) {
-                    // DEBUG_LOG("INFO", "Found self at position (" << x << "," << y << ") with character '" << c << "'");
+                    DEBUG_LOG("INFO", "Found self at position (" << x << "," << y << ") with character '" << c << "'");
                     selfX = x;
                     selfY = y;
                     selfFound = true;

@@ -34,5 +34,8 @@ GameResult FinalBoardView::toResult() const {
 
     // **critical**: wrap your final Board in a SatelliteView so gameState != nullptr
     result.gameState = std::make_unique<BoardSatView>(board_);
+std::fprintf(stderr, "[FinalBoardView::toResult] producing GameResult with gameState ptr=%p\n",
+                 static_cast<void*>(result.gameState.get()));
+
     return result;
 }

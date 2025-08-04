@@ -1,11 +1,37 @@
+// Simulator/main.cpp
 #include <iostream>
 #include "ArgParser.h"
 #include "Simulator.h"
 
+#include "ErrorLogger.h"
+#include <exception>
+#include <cstdlib>
+
+static void terminateHandler() {
+    try {
+        std::exception_ptr eptr = std::current_exception();
+        if (eptr) {
+            std::rethrow_exception(eptr);
+        } else {
+            ErrorLogger::instance().log("Terminated due to unknown exception.");
+        }
+    } catch (const std::exception& ex) {
+        ErrorLogger::instance().log(std::string("Unhandled exception: ") + ex.what());
+    } catch (...) {
+        ErrorLogger::instance().log("Unhandled non-standard exception.");
+    }
+    std::abort();
+}
+
 int main(int argc, char* argv[]) {
+    // Initialize ErrorLogger first
+    ErrorLogger::instance().init();
+    std::set_terminate(terminateHandler);
+    
     // Parse command line arguments
     Config cfg;
     if (!parseArguments(argc, argv, cfg)) {
+        LOG_ERROR("Failed to parse command line arguments");
         return 1;
     }
     
@@ -23,10 +49,14 @@ int main(int argc, char* argv[]) {
         return result;
         
     } catch (const std::exception& ex) {
-        std::cerr << "Fatal error: " << ex.what() << std::endl;
+        std::string errorMsg = "Fatal error: " + std::string(ex.what());
+        std::cerr << errorMsg << std::endl;
+        LOG_ERROR(errorMsg);
         return 1;
     } catch (...) {
-        std::cerr << "Unknown fatal error occurred" << std::endl;
+        std::string errorMsg = "Unknown fatal error occurred";
+        std::cerr << errorMsg << std::endl;
+        LOG_ERROR(errorMsg);
         return 1;
     }
 }

@@ -6,6 +6,8 @@
 #include "SatelliteView.h"
 #include "GameResult.h"
 
+#include "ErrorLogger.h"
+
 #include <iostream>
 #include <filesystem>
 #include <fstream>
@@ -33,7 +35,10 @@ CompetitionEntry::CompetitionEntry(std::string m, std::string x, std::string y, 
 // Constructor
 Simulator::Simulator(const Config& config) 
     : config_(config) {
-    initErrorLog();
+    // Initialize ErrorLogger first
+    ErrorLogger::instance().init();
+    
+    // initErrorLog();
     logInfo("SIMULATOR", "constructor", "Initializing Simulator in " + 
         std::string(config_.modeComparative ? "comparative" : "competition") + " mode");
     
@@ -44,9 +49,10 @@ Simulator::Simulator(const Config& config)
 
 // Destructor
 Simulator::~Simulator() {
+    
     logInfo("SIMULATOR", "destructor", "Cleaning up Simulator");
     writeMapErrors(); // Write any accumulated map errors before cleanup
-    cleanup();
+    // cleanup();
 }
 
 // Main execution method
@@ -68,28 +74,34 @@ int Simulator::runComparative() {
     try {
         md = loadMapWithParams(config_.game_map);
     } catch (const std::exception& ex) {
-        logError("SIMULATOR", "runComparative", "Error loading map: " + std::string(ex.what()));
+        std::string errorMsg = "Error loading map: " + std::string(ex.what());
+        logError("SIMULATOR", "runComparative", errorMsg);
+        LOG_ERROR(errorMsg);
         return 1;
     }
 
     // 2) Load Algorithms (must succeed)
     if (!loadAlgorithmPlugins()) {
-        logError("SIMULATOR", "runComparative", "Failed to load required algorithms");
+        std::string errorMsg = "Failed to load required algorithms";
+        logError("SIMULATOR", "runComparative", errorMsg);
+        LOG_ERROR(errorMsg);
         return 1;
     }
-
+    
     // 3) Load GameManagers (resilient)
     if (!loadGameManagerPlugins()) {
-        logError("SIMULATOR", "runComparative", "Failed to load any GameManager plugins");
+        std::string errorMsg = "Failed to load any GameManager plugins";
+        logError("SIMULATOR", "runComparative", errorMsg);
+        LOG_ERROR(errorMsg);
         return 1;
     }
-
+    
     logInfo("SIMULATOR", "runComparative", 
         "Successfully loaded " + std::to_string(loadedGameManagers_) + " GameManager(s)");
-
+        
     // 4) Dispatch tasks
     dispatchComparativeTasks();
-
+        
     // 5) Write results
     writeComparativeFile(comparativeResults_);
 
@@ -118,7 +130,9 @@ int Simulator::runCompetition() {
         }
     }
     if (maps.empty()) {
-        logError("SIMULATOR", "runCompetition", "No files found in game_maps_folder");
+        std::string errorMsg = "No files found in game_maps_folder";
+        logError("SIMULATOR", "runCompetition", errorMsg);
+        LOG_ERROR(errorMsg);
         return 1;
     }
 
@@ -126,19 +140,24 @@ int Simulator::runCompetition() {
 
     // 2) Load GameManager (must succeed)
     if (!loadSingleGameManager()) {
-        logError("SIMULATOR", "runCompetition", "Failed to load GameManager");
+        std::string errorMsg = "Failed to load GameManager";
+        logError("SIMULATOR", "runCompetition", errorMsg);
+        LOG_ERROR(errorMsg);
         return 1;
     }
 
     // 3) Load Algorithms (resilient, need at least 2)
     if (!loadAlgorithmPlugins()) {
-        logError("SIMULATOR", "runCompetition", "Failed to load sufficient algorithms");
+        std::string errorMsg = "Failed to load sufficient algorithms";
+        logError("SIMULATOR", "runCompetition", errorMsg);
+        LOG_ERROR(errorMsg);
         return 1;
     }
 
     if (loadedAlgorithms_ < 2) {
-        logError("SIMULATOR", "runCompetition", 
-            "Need at least 2 algorithms, found " + std::to_string(loadedAlgorithms_));
+        std::string errorMsg = "Need at least 2 algorithms, found " + std::to_string(loadedAlgorithms_);
+        logError("SIMULATOR", "runCompetition", errorMsg);
+        LOG_ERROR(errorMsg);
         return 1;
     }
 
@@ -174,6 +193,7 @@ MapData Simulator::loadMapWithParams(const std::string& path) const {
     if (!in.is_open()) {
         std::string errorMsg = "Failed to open map file: " + path;
         mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+        LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
 
@@ -190,17 +210,20 @@ MapData Simulator::loadMapWithParams(const std::string& path) const {
             if (eqPos == std::string::npos) {
                 std::string errorMsg = "Invalid Rows format in " + path + ": " + line + " (missing '=' sign)";
                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+                LOG_ERROR(errorMsg);
                 throw std::runtime_error(errorMsg);
             }
             // Check for spaces around '=' sign
             if (eqPos > 4 && line[eqPos - 1] == ' ') {
                 std::string errorMsg = "Invalid Rows format in " + path + ": " + line + " (space before '=' sign)";
                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+                LOG_ERROR(errorMsg);
                 throw std::runtime_error(errorMsg);
             }
             if (eqPos + 1 < line.length() && line[eqPos + 1] == ' ') {
                 std::string errorMsg = "Invalid Rows format in " + path + ": " + line + " (space after '=' sign)";
                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+                LOG_ERROR(errorMsg);
                 throw std::runtime_error(errorMsg);
             }
             try {
@@ -209,6 +232,7 @@ MapData Simulator::loadMapWithParams(const std::string& path) const {
             } catch (const std::exception& e) {
                 std::string errorMsg = "Invalid Rows value in " + path + ": " + line;
                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+                LOG_ERROR(errorMsg);
                 throw std::runtime_error(errorMsg);
             }
         } else if (line.rfind("Cols", 0) == 0) {
@@ -216,17 +240,20 @@ MapData Simulator::loadMapWithParams(const std::string& path) const {
             if (eqPos == std::string::npos) {
                 std::string errorMsg = "Invalid Cols format in " + path + ": " + line + " (missing '=' sign)";
                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+                LOG_ERROR(errorMsg);
                 throw std::runtime_error(errorMsg);
             }
             // Check for spaces around '=' sign
             if (eqPos > 4 && line[eqPos - 1] == ' ') {
                 std::string errorMsg = "Invalid Cols format in " + path + ": " + line + " (space before '=' sign)";
                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+                LOG_ERROR(errorMsg);
                 throw std::runtime_error(errorMsg);
             }
             if (eqPos + 1 < line.length() && line[eqPos + 1] == ' ') {
                 std::string errorMsg = "Invalid Cols format in " + path + ": " + line + " (space after '=' sign)";
                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+                LOG_ERROR(errorMsg);
                 throw std::runtime_error(errorMsg);
             }
             try {
@@ -235,6 +262,7 @@ MapData Simulator::loadMapWithParams(const std::string& path) const {
             } catch (const std::exception& e) {
                 std::string errorMsg = "Invalid Cols value in " + path + ": " + line;
                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+                LOG_ERROR(errorMsg);
                 throw std::runtime_error(errorMsg);
             }
         } else if (line.rfind("MaxSteps", 0) == 0) {
@@ -242,17 +270,20 @@ MapData Simulator::loadMapWithParams(const std::string& path) const {
             if (eqPos == std::string::npos) {
                 std::string errorMsg = "Invalid MaxSteps format in " + path + ": " + line + " (missing '=' sign)";
                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+                LOG_ERROR(errorMsg);
                 throw std::runtime_error(errorMsg);
             }
             // Check for spaces around '=' sign
             if (eqPos > 8 && line[eqPos - 1] == ' ') {
                 std::string errorMsg = "Invalid MaxSteps format in " + path + ": " + line + " (space before '=' sign)";
                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+                LOG_ERROR(errorMsg);
                 throw std::runtime_error(errorMsg);
             }
             if (eqPos + 1 < line.length() && line[eqPos + 1] == ' ') {
                 std::string errorMsg = "Invalid MaxSteps format in " + path + ": " + line + " (space after '=' sign)";
                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+                LOG_ERROR(errorMsg);
                 throw std::runtime_error(errorMsg);
             }
             try {
@@ -261,6 +292,7 @@ MapData Simulator::loadMapWithParams(const std::string& path) const {
             } catch (const std::exception& e) {
                 std::string errorMsg = "Invalid MaxSteps value in " + path + ": " + line;
                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+                LOG_ERROR(errorMsg);
                 throw std::runtime_error(errorMsg);
             }
         } else if (line.rfind("NumShells", 0) == 0) {
@@ -268,17 +300,20 @@ MapData Simulator::loadMapWithParams(const std::string& path) const {
             if (eqPos == std::string::npos) {
                 std::string errorMsg = "Invalid NumShells format in " + path + ": " + line + " (missing '=' sign)";
                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+                LOG_ERROR(errorMsg);
                 throw std::runtime_error(errorMsg);
             }
             // Check for spaces around '=' sign
             if (eqPos > 9 && line[eqPos - 1] == ' ') {
                 std::string errorMsg = "Invalid NumShells format in " + path + ": " + line + " (space before '=' sign)";
                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+                LOG_ERROR(errorMsg);
                 throw std::runtime_error(errorMsg);
             }
             if (eqPos + 1 < line.length() && line[eqPos + 1] == ' ') {
                 std::string errorMsg = "Invalid NumShells format in " + path + ": " + line + " (space after '=' sign)";
                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+                LOG_ERROR(errorMsg);
                 throw std::runtime_error(errorMsg);
             }
             try {
@@ -287,6 +322,7 @@ MapData Simulator::loadMapWithParams(const std::string& path) const {
             } catch (const std::exception& e) {
                 std::string errorMsg = "Invalid NumShells value in " + path + ": " + line;
                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+                LOG_ERROR(errorMsg);
                 throw std::runtime_error(errorMsg);
             }
         } else {
@@ -323,6 +359,7 @@ MapData Simulator::loadMapWithParams(const std::string& path) const {
             if (i + 1 < missingHeaders.size()) errorMsg += ", ";
         }
         mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+        LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
 
@@ -332,6 +369,7 @@ MapData Simulator::loadMapWithParams(const std::string& path) const {
                               ": rows=" + std::to_string(rows) + 
                               ", cols=" + std::to_string(cols);
         mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+        LOG_ERROR(errorMsg);
         throw std::runtime_error(errorMsg);
     }
 
@@ -472,15 +510,16 @@ void Simulator::writeMapErrors() const {
     
     std::ofstream errFile(errorFileName);
     if (!errFile.is_open()) {
-        logWarn("FILEWRITER", "writeMapErrors", 
-            "Cannot create map errors file: " + errorFileName + ", printing to stderr");
+        std::string warnMsg = "Cannot create map errors file: " + errorFileName + ", printing to stderr";
+        logWarn("FILEWRITER", "writeMapErrors", warnMsg);
+        LOG_ERROR(warnMsg);
         
         // Fallback to stderr
         std::cerr << "\n=== MAP LOADING ERRORS ===\n";
         for (const auto& error : mapLoadErrors_) {
-            std::cerr << "Map: " << error.mapPath << "\n";
-            std::cerr << "Time: " << error.timestamp << "\n";
-            std::cerr << "Error: " << error.errorReason << "\n\n";
+            std::string errorLine = "Map: " + error.mapPath + " Time: " + error.timestamp + " Error: " + error.errorReason;
+            std::cerr << errorLine << "\n";
+            LOG_ERROR(errorLine);
         }
         return;
     }
@@ -503,80 +542,140 @@ void Simulator::writeMapErrors() const {
     logInfo("FILEWRITER", "writeMapErrors", "Map errors file written successfully");
 }
 
-// Algorithm plugin loading
+// Algorithm plugin loading - WITH TIMING PRESERVATION
 bool Simulator::loadAlgorithmPlugins() {
-    auto& algoReg = AlgorithmRegistrar::get();
+    // Add small delay to preserve timing that prevents segfault
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
     
-    if (config_.modeComparative) {
-        // Load exactly 2 algorithms
-        logDebug("PLUGINLOADER", "loadAlgorithmPlugins", "Loading 2 algorithm plugins for comparative mode");
+    try {
+        auto& algoReg = AlgorithmRegistrar::get();
         
-        for (const auto& algPath : {config_.algorithm1, config_.algorithm2}) {
-            std::string name = stripSoExtension(algPath);
-            logDebug("PLUGINLOADER", "loadAlgorithmPlugins", "Loading algorithm: " + algPath);
+        if (config_.modeComparative) {
+            logDebug("PLUGINLOADER", "loadAlgorithmPlugins", "Loading 2 algorithm plugins for comparative mode");
             
-            algoReg.createAlgorithmFactoryEntry(name);
-            void* h = dlopen(algPath.c_str(), RTLD_NOW);
+            std::vector<std::string> algPaths = {config_.algorithm1, config_.algorithm2};
             
-            if (!h) {
-                logError("PLUGINLOADER", "loadAlgorithmPlugins", 
-                    "dlopen failed for algorithm '" + name + "': " + std::string(dlerror()));
-                return false;
-            }
-            
-            try { 
-                algoReg.validateLastRegistration(); 
-            } catch (...) {
-                logError("PLUGINLOADER", "loadAlgorithmPlugins", 
-                    "Registration validation failed for algorithm '" + name + "'");
-                algoReg.removeLast();
-                dlclose(h);
-                return false;
-            }
-            
-            logDebug("PLUGINLOADER", "loadAlgorithmPlugins", 
-                "Algorithm '" + name + "' loaded and validated successfully");
-            algorithmHandles_.push_back(h);
-            validAlgorithmPaths_.push_back(algPath);
-            loadedAlgorithms_++;
-        }
-        return true;
-    } else {
-        // Competition mode - load all algorithms from folder
-        logDebug("PLUGINLOADER", "loadAlgorithmPlugins", 
-            "Loading algorithm plugins from '" + config_.algorithms_folder + "'");
-        
-        for (auto& e : fs::directory_iterator(config_.algorithms_folder)) {
-            if (e.path().extension() == ".so") {
-                std::string path = e.path().string();
-                std::string name = stripSoExtension(path);
+            for (size_t i = 0; i < algPaths.size(); ++i) {
+                const auto& algPath = algPaths[i];
                 
-                logDebug("PLUGINLOADER", "loadAlgorithmPlugins", "Loading algorithm: " + path);
-                algoReg.createAlgorithmFactoryEntry(name);
-                void* h = dlopen(path.c_str(), RTLD_NOW);
-                if (!h) {
-                    logWarn("PLUGINLOADER", "loadAlgorithmPlugins", 
-                        "dlopen failed for algorithm '" + path + "': " + std::string(dlerror()));
-                    algoReg.removeLast();
-                    continue;
+                // Check if file exists first
+                if (!std::filesystem::exists(algPath)) {
+                    std::string errorMsg = "Algorithm file does not exist: " + algPath;
+                    logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
+                    LOG_ERROR(errorMsg);
+                    return false;
                 }
-                try { 
-                    algoReg.validateLastRegistration(); 
+                
+                std::string name = stripSoExtension(algPath);
+                logDebug("PLUGINLOADER", "loadAlgorithmPlugins", "Loading algorithm: " + algPath);
+                
+                try {
+                    algoReg.createAlgorithmFactoryEntry(name);
+                } catch (const std::exception& e) {
+                    std::string errorMsg = "createAlgorithmFactoryEntry failed: " + std::string(e.what());
+                    logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
+                    LOG_ERROR(errorMsg);
+                    return false;
                 } catch (...) {
-                    logWarn("PLUGINLOADER", "loadAlgorithmPlugins", 
-                        "Registration validation failed for algorithm '" + path + "'");
+                    std::string errorMsg = "createAlgorithmFactoryEntry failed with unknown exception";
+                    logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
+                    LOG_ERROR(errorMsg);
+                    return false;
+                }
+                
+                void* h = dlopen(algPath.c_str(), RTLD_NOW);
+                
+                if (!h) {
+                    const char* dlerr = dlerror();
+                    std::string errorMsg = "dlopen failed for algorithm '" + name + "': " + std::string(dlerr ? dlerr : "unknown");
+                    logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
+                    LOG_ERROR(errorMsg);
+                    
+                    // Clean up registry entry
+                    try {
+                        algoReg.removeLast();
+                    } catch (...) {
+                        logWarn("PLUGINLOADER", "loadAlgorithmPlugins", "Failed to remove last registry entry");
+                    }
+                    return false;
+                }
+                
+                try { 
+                    algoReg.validateLastRegistration();
+                } catch (const std::exception& e) {
+                    std::string errorMsg = "Registration validation failed for algorithm '" + name + "': " + e.what();
+                    logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
+                    LOG_ERROR(errorMsg);
                     algoReg.removeLast();
                     dlclose(h);
-                    continue;
+                    return false;
+                } catch (...) {
+                    std::string errorMsg = "Registration validation failed for algorithm '" + name + "'";
+                    logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
+                    LOG_ERROR(errorMsg);
+                    algoReg.removeLast();
+                    dlclose(h);
+                    return false;
                 }
+                
                 logDebug("PLUGINLOADER", "loadAlgorithmPlugins", 
                     "Algorithm '" + name + "' loaded and validated successfully");
                 algorithmHandles_.push_back(h);
-                validAlgorithmPaths_.push_back(path);
+                validAlgorithmPaths_.push_back(algPath);
                 loadedAlgorithms_++;
             }
+            
+            return true;
+        } else {
+            // Competition mode - load all algorithms from folder
+            logDebug("PLUGINLOADER", "loadAlgorithmPlugins", 
+                "Loading algorithm plugins from '" + config_.algorithms_folder + "'");
+            
+            for (auto& e : fs::directory_iterator(config_.algorithms_folder)) {
+                if (e.path().extension() == ".so") {
+                    std::string path = e.path().string();
+                    std::string name = stripSoExtension(path);
+                    
+                    logDebug("PLUGINLOADER", "loadAlgorithmPlugins", "Loading algorithm: " + path);
+                    algoReg.createAlgorithmFactoryEntry(name);
+                    void* h = dlopen(path.c_str(), RTLD_NOW);
+                    if (!h) {
+                        std::string warnMsg = "dlopen failed for algorithm '" + path + "': " + std::string(dlerror());
+                        logWarn("PLUGINLOADER", "loadAlgorithmPlugins", warnMsg);
+                        LOG_ERROR(warnMsg);
+                        algoReg.removeLast();
+                        continue;
+                    }
+                    try { 
+                        algoReg.validateLastRegistration(); 
+                    } catch (...) {
+                        std::string warnMsg = "Registration validation failed for algorithm '" + path + "'";
+                        logWarn("PLUGINLOADER", "loadAlgorithmPlugins", warnMsg);
+                        LOG_ERROR(warnMsg);
+                        algoReg.removeLast();
+                        dlclose(h);
+                        continue;
+                    }
+                    logDebug("PLUGINLOADER", "loadAlgorithmPlugins", 
+                        "Algorithm '" + name + "' loaded and validated successfully");
+                    algorithmHandles_.push_back(h);
+                    validAlgorithmPaths_.push_back(path);
+                    loadedAlgorithms_++;
+                }
+            }
+            return loadedAlgorithms_ >= 2;
         }
-        return loadedAlgorithms_ >= 2;
+        
+    } catch (const std::exception& e) {
+        std::string errorMsg = "Exception: " + std::string(e.what());
+        logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
+        LOG_ERROR(errorMsg);
+        return false;
+    } catch (...) {
+        std::string errorMsg = "Unknown exception";
+        logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
+        LOG_ERROR(errorMsg);
+        return false;
     }
 }
 
@@ -596,8 +695,9 @@ bool Simulator::loadGameManagerPlugins() {
             gmReg.createGameManagerEntry(name);
             void* h = dlopen(path.c_str(), RTLD_NOW);
             if (!h) {
-                logWarn("PLUGINLOADER", "loadGameManagerPlugins", 
-                    "dlopen failed for GameManager '" + name + "': " + std::string(dlerror()));
+                std::string warnMsg = "dlopen failed for GameManager '" + name + "': " + std::string(dlerror());
+                logWarn("PLUGINLOADER", "loadGameManagerPlugins", warnMsg);
+                LOG_ERROR(warnMsg);
                 gmReg.removeLast();
                 continue;
             }
@@ -605,8 +705,9 @@ bool Simulator::loadGameManagerPlugins() {
             try { 
                 gmReg.validateLastRegistration(); 
             } catch (...) {
-                logWarn("PLUGINLOADER", "loadGameManagerPlugins", 
-                    "Registration validation failed for GameManager '" + name + "'");
+                std::string warnMsg = "Registration validation failed for GameManager '" + name + "'";
+                logWarn("PLUGINLOADER", "loadGameManagerPlugins", warnMsg);
+                LOG_ERROR(warnMsg);
                 gmReg.removeLast();
                 dlclose(h);
                 continue;
@@ -632,16 +733,20 @@ bool Simulator::loadSingleGameManager() {
     gmReg.createGameManagerEntry(gmName);
     void* gmH = dlopen(config_.game_manager.c_str(), RTLD_NOW);
     if (!gmH) {
-        logError("PLUGINLOADER", "loadSingleGameManager", 
-            "dlopen failed for GameManager: " + std::string(dlerror()));
+        const char* dlerr = dlerror();
+        std::string errorMsg = "dlopen failed for GameManager: " + std::string(dlerr ? dlerr : "unknown");
+        LOG_ERROR_FMT("dlopen failed for GameManager %s: %s", config_.game_manager.c_str(), dlerr ? dlerr : "unknown");
+        logError("PLUGINLOADER", "loadSingleGameManager", errorMsg);
+        LOG_ERROR(errorMsg);
         gmReg.removeLast();
         return false;
     }
     try { 
         gmReg.validateLastRegistration(); 
     } catch (...) {
-        logError("PLUGINLOADER", "loadSingleGameManager", 
-            "GameManager registration validation failed for '" + gmName + "'");
+        std::string errorMsg = "GameManager registration validation failed for '" + gmName + "'";
+        logError("PLUGINLOADER", "loadSingleGameManager", errorMsg);
+        LOG_ERROR(errorMsg);
         gmReg.removeLast();
         dlclose(gmH);
         return false;
@@ -667,7 +772,9 @@ void Simulator::dispatchComparativeTasks() {
     try {
         md = loadMapWithParams(config_.game_map);
     } catch (const std::exception& ex) {
-        logError("SIMULATOR", "dispatchComparativeTasks", "Error loading map: " + std::string(ex.what()));
+        std::string errorMsg = "Error loading map: " + std::string(ex.what());
+        logError("SIMULATOR", "dispatchComparativeTasks", errorMsg);
+        LOG_ERROR(errorMsg);
         return;
     }
     SatelliteView& realMap = *md.view;
@@ -716,6 +823,11 @@ void Simulator::dispatchComparativeTasks() {
             logDebug("GAMETHREAD", "worker", "Final map state built, storing results for GM index " + std::to_string(gi));
             
             std::lock_guard<std::mutex> lock(resultsMutex_);
+            
+            auto* state_ptr = gr.gameState.get();
+            std::fprintf(stderr,
+                 "[Simulator] inserting ComparativeEntry with gameState ptr=%p for GM index %zu\n",
+            static_cast<void*>(state_ptr), gi);
             comparativeResults_.emplace_back(
                 stripSoExtension(validGameManagerPaths_[gi]),
                 std::move(gr),
@@ -746,7 +858,9 @@ void Simulator::dispatchCompetitionTasks() {
     auto mapViews = preloadMapsAndTrackValid(allMapFiles, validMapFiles, mapRows, mapCols, mapMaxSteps, mapNumShells);
     
     if (mapViews.empty()) {
-        logError("SIMULATOR", "dispatchCompetitionTasks", "No valid maps to run");
+        std::string errorMsg = "No valid maps to run";
+        logError("SIMULATOR", "dispatchCompetitionTasks", errorMsg);
+        LOG_ERROR(errorMsg);
         return;
     }
 
@@ -853,7 +967,9 @@ std::vector<std::shared_ptr<SatelliteView>> Simulator::preloadMapsAndTrackValid(
             validMapFiles.push_back(mapFile); // Only add if successful
             logDebug("MAPLOADER", "preloadMapsAndTrackValid", "Successfully preloaded map: " + mapFile);
         } catch (const std::exception& ex) {
-            logWarn("MAPLOADER", "preloadMapsAndTrackValid", "Skipping invalid map '" + mapFile + "': " + std::string(ex.what()));
+            std::string warnMsg = "Skipping invalid map '" + mapFile + "': " + std::string(ex.what());
+            logWarn("MAPLOADER", "preloadMapsAndTrackValid", warnMsg);
+            LOG_ERROR(warnMsg);
             // Error already recorded in mapLoadErrors_ by loadMapWithParams
         }
     }
@@ -938,8 +1054,9 @@ bool Simulator::writeComparativeFile(const std::vector<ComparativeEntry>& entrie
     // Open file (or fallback)
     std::ofstream ofs(outPath);
     if (!ofs.is_open()) {
-        logWarn("FILEWRITER", "writeComparativeFile", 
-            "Cannot create file " + outPath.string() + ", falling back to stdout");
+        std::string warnMsg = "Cannot create file " + outPath.string() + ", falling back to stdout";
+        logWarn("FILEWRITER", "writeComparativeFile", warnMsg);
+        LOG_ERROR(warnMsg);
         
         // Fallback to stdout
         std::cout << "game_map="   << config_.game_map   << "\n";
@@ -1025,8 +1142,9 @@ bool Simulator::writeCompetitionFile(const std::vector<CompetitionEntry>& result
     // Open file (or fallback to stdout)
     std::ofstream ofs(outPath);
     if (!ofs.is_open()) {
-        logWarn("FILEWRITER", "writeCompetitionFile", 
-            "Cannot create file " + outPath.string() + ", falling back to stdout");
+        std::string warnMsg = "Cannot create file " + outPath.string() + ", falling back to stdout";
+        logWarn("FILEWRITER", "writeCompetitionFile", warnMsg);
+        LOG_ERROR(warnMsg);
         
         // Fallback print
         std::cout << "game_maps_folder=" << config_.game_maps_folder << "\n";
@@ -1072,6 +1190,10 @@ std::string Simulator::currentTimestamp() const {
 // Cleanup
 void Simulator::cleanup() {
     logInfo("SIMULATOR", "cleanup", "Cleaning up dynamic library handles");
+    if(config_.modeCompetition) {
+    // Clear registrars
+    AlgorithmRegistrar::get().clear();
+    GameManagerRegistrar::get().clear();
     
     for (auto* handle : algorithmHandles_) {
         if (handle) dlclose(handle);
@@ -1082,11 +1204,7 @@ void Simulator::cleanup() {
     
     algorithmHandles_.clear();
     gameManagerHandles_.clear();
-    
-    // Clear registrars
-    AlgorithmRegistrar::get().clear();
-    GameManagerRegistrar::get().clear();
-    
+}
     logInfo("SIMULATOR", "cleanup", "Cleanup completed");
 }
 
@@ -1106,16 +1224,18 @@ void Simulator::logDebug(const std::string& component, const std::string& functi
 void Simulator::logWarn(const std::string& component, const std::string& function, const std::string& message) const {
     std::lock_guard<std::mutex> lock(debugMutex_);
     std::cerr << "[T" << std::this_thread::get_id() << "] [WARN] [" << component << "] [" << function << "] " << message << std::endl;
+    // Also log warnings to ErrorLogger
+    LOG_ERROR("WARN: [" + component + "] [" + function + "] " + message);
 }
 
 void Simulator::logError(const std::string& component, const std::string& function, const std::string& message) const {
     std::lock_guard<std::mutex> lock(debugMutex_);
     std::cerr << "[T" << std::this_thread::get_id() << "] [ERROR] [" << component << "] [" << function << "] " << message << std::endl;
+    // Also log errors to ErrorLogger
+    LOG_ERROR("ERROR: [" + component + "] [" + function + "] " + message);
 }
 
 // Static error log initialization
-void Simulator::initErrorLog() {
-    errorLog_.open("errors.txt", std::ios::app);
-}
-
-// Additional methods for outcome formatting, file writing, etc. would continue here...
+// void Simulator::initErrorLog() {
+//     errorLog_.open("errors.txt", std::ios::app);
+// }
