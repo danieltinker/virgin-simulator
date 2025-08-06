@@ -126,6 +126,18 @@ private:
     void dispatchComparativeTasks();
     void dispatchCompetitionTasks();
     
+        // Helper method to parse parameter lines with flexible spacing around '='
+    bool parseParameter(const std::string& line, const std::string& paramName, 
+                       size_t& value, const std::string& path) const;
+    
+    // Enhanced grid normalization with character cleaning and flexible dimensions
+    std::vector<std::string> cleanAndNormalizeGrid(const std::vector<std::string>& rawGrid, 
+                                                   size_t targetRows, size_t targetCols, 
+                                                   const std::string& path) const;
+    
+    // Character cleaning - only keep valid game objects, replace invalid with space
+    char cleanCharacter(char c) const;
+    
     // Map error tracking
     struct MapLoadError {
         std::string mapPath;

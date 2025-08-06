@@ -7,7 +7,7 @@
 #include "GameResult.h"
 
 #include "ErrorLogger.h"
-
+#include <set>
 #include <iostream>
 #include <filesystem>
 #include <fstream>
@@ -51,7 +51,7 @@ Simulator::Simulator(const Config& config)
 Simulator::~Simulator() {
     
     logInfo("SIMULATOR", "destructor", "Cleaning up Simulator");
-    writeMapErrors(); // Write any accumulated map errors before cleanup
+    // writeMapErrors(); // Write any accumulated map errors before cleanup
     // cleanup();
 }
 
@@ -185,7 +185,161 @@ int Simulator::runCompetition() {
     return 0;
 }
 
-// Map loading with enhanced error handling and flexibility
+
+
+// Helper method to parse parameter lines with flexible spacing around '='
+bool Simulator::parseParameter(const std::string& line, const std::string& paramName, 
+                              size_t& value, const std::string& path) const {
+    // Find the parameter name at the start of the line
+    if (line.find(paramName) != 0) {
+        std::string errorMsg = "Parameter line doesn't start with '" + paramName + "' in " + path + ": " + line;
+        mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+        LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+    
+    // Find the '=' sign
+    auto eqPos = line.find('=');
+    if (eqPos == std::string::npos) {
+        std::string errorMsg = "Missing '=' in parameter line in " + path + ": " + line;
+        mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+        LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+    
+    // Extract the part before '=' and trim whitespace
+    std::string beforeEquals = line.substr(0, eqPos);
+    beforeEquals.erase(beforeEquals.find_last_not_of(" \t") + 1); // trim right
+    
+    // Check that the trimmed part exactly matches the parameter name
+    if (beforeEquals != paramName) {
+        std::string errorMsg = "Invalid parameter name in " + path + ": expected '" + 
+                              paramName + "', got '" + beforeEquals + "' in line: " + line;
+        mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+        LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+    
+    // Extract the part after '=' and trim whitespace
+    std::string afterEquals = line.substr(eqPos + 1);
+    afterEquals.erase(0, afterEquals.find_first_not_of(" \t")); // trim left
+    afterEquals.erase(afterEquals.find_last_not_of(" \t") + 1); // trim right
+    
+    // Parse the value
+    try {
+        value = std::stoul(afterEquals);
+        return true;
+    } catch (const std::exception& e) {
+        std::string errorMsg = "Invalid " + paramName + " value in " + path + ": '" + 
+                              afterEquals + "' in line: " + line;
+        mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+        LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+}
+
+// Character cleaning - only keep valid game objects, replace invalid with space
+char Simulator::cleanCharacter(char c) const {
+    switch (c) {
+        case '@':  // Mine
+        case '#':  // Wall  
+        case '1':  // Tank player 1
+        case '2':  // Tank player 2
+        case ' ':  // Empty space
+            return c;
+        default:
+            // Replace any other character (including '.') with space
+            return ' ';
+    }
+}
+
+// Enhanced grid normalization with character cleaning and flexible dimensions
+std::vector<std::string> Simulator::cleanAndNormalizeGrid(const std::vector<std::string>& rawGrid, 
+                                                          size_t targetRows, size_t targetCols, 
+                                                          const std::string& path) const {
+    std::vector<std::string> normalized;
+    normalized.reserve(targetRows);
+    
+    logDebug("MAPLOADER", "cleanAndNormalizeGrid", 
+        "Normalizing grid from " + std::to_string(rawGrid.size()) + " rows to " + 
+        std::to_string(targetRows) + " rows, " + std::to_string(targetCols) + " cols");
+
+    bool foundInvalidChars = false;
+    std::set<char> invalidCharsFound;
+
+    for (size_t row = 0; row < targetRows; ++row) {
+        std::string normalizedRow;
+        normalizedRow.reserve(targetCols);
+        
+        if (row < rawGrid.size()) {
+            // Process existing row
+            const std::string& sourceRow = rawGrid[row];
+            
+            for (size_t col = 0; col < targetCols; ++col) {
+                if (col < sourceRow.size()) {
+                    // Clean and normalize the character
+                    char originalChar = sourceRow[col];
+                    char cleanedChar = cleanCharacter(originalChar);
+                    
+                    if (originalChar != cleanedChar) {
+                        foundInvalidChars = true;
+                        invalidCharsFound.insert(originalChar);
+                    }
+                    
+                    normalizedRow += cleanedChar;
+                } else {
+                    // Fill missing columns with spaces
+                    normalizedRow += ' ';
+                }
+            }
+            
+            // Log if we truncated columns
+            if (sourceRow.size() > targetCols) {
+                logDebug("MAPLOADER", "cleanAndNormalizeGrid", 
+                    "Row " + std::to_string(row) + " truncated from " + 
+                    std::to_string(sourceRow.size()) + " to " + std::to_string(targetCols) + " cols");
+            }
+            // Log if we padded columns
+            else if (sourceRow.size() < targetCols) {
+                logDebug("MAPLOADER", "cleanAndNormalizeGrid", 
+                    "Row " + std::to_string(row) + " padded from " + 
+                    std::to_string(sourceRow.size()) + " to " + std::to_string(targetCols) + " cols");
+            }
+        } else {
+            // Fill missing rows with spaces
+            normalizedRow = std::string(targetCols, ' ');
+            logDebug("MAPLOADER", "cleanAndNormalizeGrid", 
+                "Row " + std::to_string(row) + " created as empty (missing from source)");
+        }
+        
+        normalized.push_back(std::move(normalizedRow));
+    }
+    
+    // Log if we ignored extra rows
+    if (rawGrid.size() > targetRows) {
+        logDebug("MAPLOADER", "cleanAndNormalizeGrid", 
+            "Ignored " + std::to_string(rawGrid.size() - targetRows) + " extra rows");
+    }
+    
+    // Log invalid characters found
+    if (foundInvalidChars) {
+        std::string invalidCharsStr;
+        for (char c : invalidCharsFound) {
+            if (!invalidCharsStr.empty()) invalidCharsStr += ", ";
+            if (c == ' ') invalidCharsStr += "' '";
+            else invalidCharsStr += "'" + std::string(1, c) + "'";
+        }
+        
+        std::string errorMsg = "Invalid characters found in " + path + 
+                              " (replaced with spaces): " + invalidCharsStr;
+        mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+        logWarn("MAPLOADER", "cleanAndNormalizeGrid", errorMsg);
+    }
+    
+    return normalized;
+}
+
+// Fixed Map loading with enhanced error handling and flexibility
 MapData Simulator::loadMapWithParams(const std::string& path) const {
     logDebug("MAPLOADER", "loadMapWithParams", "Loading map from: " + path);
     
@@ -201,145 +355,82 @@ MapData Simulator::loadMapWithParams(const std::string& path) const {
     std::vector<std::string> rawGridLines;
     std::string line;
     bool foundRows = false, foundCols = false, foundMaxSteps = false, foundNumShells = false;
+    int lineNumber = 0;
+    bool headersParsed = false;
 
     while (std::getline(in, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
+        lineNumber++;
         
-        if (line.rfind("Rows", 0) == 0) {
-            auto eqPos = line.find('=');
-            if (eqPos == std::string::npos) {
-                std::string errorMsg = "Invalid Rows format in " + path + ": " + line + " (missing '=' sign)";
-                mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-                LOG_ERROR(errorMsg);
-                throw std::runtime_error(errorMsg);
+        // Remove carriage return if present
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        
+        // Skip map name/description (first line)
+        if (lineNumber == 1) {
+            logDebug("MAPLOADER", "loadMapWithParams", "Map name/description: " + line);
+            continue;
+        }
+        
+        // Parse parameter lines (lines 2-5)
+        if (line.find("Rows") != std::string::npos && line.find("=") != std::string::npos) {
+            if (!parseParameter(line, "Rows", rows, path)) {
+                return MapData{}; // parseParameter already logged the error
             }
-            // Check for spaces around '=' sign
-            if (eqPos > 4 && line[eqPos - 1] == ' ') {
-                std::string errorMsg = "Invalid Rows format in " + path + ": " + line + " (space before '=' sign)";
-                mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-                LOG_ERROR(errorMsg);
-                throw std::runtime_error(errorMsg);
+            foundRows = true;
+            logDebug("MAPLOADER", "loadMapWithParams", "Parsed Rows = " + std::to_string(rows));
+        }
+        else if (line.find("Cols") != std::string::npos && line.find("=") != std::string::npos) {
+            if (!parseParameter(line, "Cols", cols, path)) {
+                return MapData{}; // parseParameter already logged the error
             }
-            if (eqPos + 1 < line.length() && line[eqPos + 1] == ' ') {
-                std::string errorMsg = "Invalid Rows format in " + path + ": " + line + " (space after '=' sign)";
-                mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-                LOG_ERROR(errorMsg);
-                throw std::runtime_error(errorMsg);
+            foundCols = true;
+            logDebug("MAPLOADER", "loadMapWithParams", "Parsed Cols = " + std::to_string(cols));
+        }
+        else if (line.find("MaxSteps") != std::string::npos && line.find("=") != std::string::npos) {
+            if (!parseParameter(line, "MaxSteps", maxSteps, path)) {
+                return MapData{}; // parseParameter already logged the error
             }
-            try {
-                rows = std::stoul(line.substr(eqPos + 1));
-                foundRows = true;
-            } catch (const std::exception& e) {
-                std::string errorMsg = "Invalid Rows value in " + path + ": " + line;
-                mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-                LOG_ERROR(errorMsg);
-                throw std::runtime_error(errorMsg);
+            foundMaxSteps = true;
+            logDebug("MAPLOADER", "loadMapWithParams", "Parsed MaxSteps = " + std::to_string(maxSteps));
+        }
+        else if (line.find("NumShells") != std::string::npos && line.find("=") != std::string::npos) {
+            if (!parseParameter(line, "NumShells", numShells, path)) {
+                return MapData{}; // parseParameter already logged the error
             }
-        } else if (line.rfind("Cols", 0) == 0) {
-            auto eqPos = line.find('=');
-            if (eqPos == std::string::npos) {
-                std::string errorMsg = "Invalid Cols format in " + path + ": " + line + " (missing '=' sign)";
-                mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-                LOG_ERROR(errorMsg);
-                throw std::runtime_error(errorMsg);
+            foundNumShells = true;
+            logDebug("MAPLOADER", "loadMapWithParams", "Parsed NumShells = " + std::to_string(numShells));
+        }
+        else {
+            // Check if we've found all headers - if so, this should be map data
+            headersParsed = foundRows && foundCols && foundMaxSteps && foundNumShells;
+            
+            if (headersParsed) {
+                // This should be a map line (including empty/whitespace-only lines)
+                rawGridLines.push_back(line);
+                logDebug("MAPLOADER", "loadMapWithParams", "Added grid line: '" + line + "'");
             }
-            // Check for spaces around '=' sign
-            if (eqPos > 4 && line[eqPos - 1] == ' ') {
-                std::string errorMsg = "Invalid Cols format in " + path + ": " + line + " (space before '=' sign)";
-                mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-                LOG_ERROR(errorMsg);
-                throw std::runtime_error(errorMsg);
-            }
-            if (eqPos + 1 < line.length() && line[eqPos + 1] == ' ') {
-                std::string errorMsg = "Invalid Cols format in " + path + ": " + line + " (space after '=' sign)";
-                mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-                LOG_ERROR(errorMsg);
-                throw std::runtime_error(errorMsg);
-            }
-            try {
-                cols = std::stoul(line.substr(eqPos + 1));
-                foundCols = true;
-            } catch (const std::exception& e) {
-                std::string errorMsg = "Invalid Cols value in " + path + ": " + line;
-                mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-                LOG_ERROR(errorMsg);
-                throw std::runtime_error(errorMsg);
-            }
-        } else if (line.rfind("MaxSteps", 0) == 0) {
-            auto eqPos = line.find('=');
-            if (eqPos == std::string::npos) {
-                std::string errorMsg = "Invalid MaxSteps format in " + path + ": " + line + " (missing '=' sign)";
-                mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-                LOG_ERROR(errorMsg);
-                throw std::runtime_error(errorMsg);
-            }
-            // Check for spaces around '=' sign
-            if (eqPos > 8 && line[eqPos - 1] == ' ') {
-                std::string errorMsg = "Invalid MaxSteps format in " + path + ": " + line + " (space before '=' sign)";
-                mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-                LOG_ERROR(errorMsg);
-                throw std::runtime_error(errorMsg);
-            }
-            if (eqPos + 1 < line.length() && line[eqPos + 1] == ' ') {
-                std::string errorMsg = "Invalid MaxSteps format in " + path + ": " + line + " (space after '=' sign)";
-                mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-                LOG_ERROR(errorMsg);
-                throw std::runtime_error(errorMsg);
-            }
-            try {
-                maxSteps = std::stoul(line.substr(eqPos + 1));
-                foundMaxSteps = true;
-            } catch (const std::exception& e) {
-                std::string errorMsg = "Invalid MaxSteps value in " + path + ": " + line;
-                mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-                LOG_ERROR(errorMsg);
-                throw std::runtime_error(errorMsg);
-            }
-        } else if (line.rfind("NumShells", 0) == 0) {
-            auto eqPos = line.find('=');
-            if (eqPos == std::string::npos) {
-                std::string errorMsg = "Invalid NumShells format in " + path + ": " + line + " (missing '=' sign)";
-                mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-                LOG_ERROR(errorMsg);
-                throw std::runtime_error(errorMsg);
-            }
-            // Check for spaces around '=' sign
-            if (eqPos > 9 && line[eqPos - 1] == ' ') {
-                std::string errorMsg = "Invalid NumShells format in " + path + ": " + line + " (space before '=' sign)";
-                mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-                LOG_ERROR(errorMsg);
-                throw std::runtime_error(errorMsg);
-            }
-            if (eqPos + 1 < line.length() && line[eqPos + 1] == ' ') {
-                std::string errorMsg = "Invalid NumShells format in " + path + ": " + line + " (space after '=' sign)";
-                mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-                LOG_ERROR(errorMsg);
-                throw std::runtime_error(errorMsg);
-            }
-            try {
-                numShells = std::stoul(line.substr(eqPos + 1));
-                foundNumShells = true;
-            } catch (const std::exception& e) {
-                std::string errorMsg = "Invalid NumShells value in " + path + ": " + line;
-                mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-                LOG_ERROR(errorMsg);
-                throw std::runtime_error(errorMsg);
-            }
-        } else {
-            if (!line.empty()) {
-                // Check if this looks like a grid line (contains game characters)
-                bool looksLikeGrid = false;
-                for (char c : line) {
-                    if (c == '.' || c == '#' || c == '@' || c == '1' || c == '2' || c == ' ') {
-                        looksLikeGrid = true;
-                        break;
-                    }
-                }
-                if (looksLikeGrid) {
+            else {
+                // We haven't found all headers yet. 
+                // If we're past line 5 (assuming max 4 parameter lines after map name), 
+                // or if this line doesn't look like a parameter line, treat it as map data
+                bool looksLikeParameter = !line.empty() && 
+                                        (line.find("=") != std::string::npos) &&
+                                        (line.find("Rows") != std::string::npos ||
+                                         line.find("Cols") != std::string::npos ||
+                                         line.find("MaxSteps") != std::string::npos ||
+                                         line.find("NumShells") != std::string::npos);
+                
+                if (lineNumber > 5 || !looksLikeParameter) {
+                    // Treat as map data, even if headers are incomplete
                     rawGridLines.push_back(line);
-                    logDebug("MAPLOADER", "loadMapWithParams", "Added grid line: '" + line + "'");
-                } else {
-                    logDebug("MAPLOADER", "loadMapWithParams", "Ignoring non-grid line: '" + line + "'");
+                    logDebug("MAPLOADER", "loadMapWithParams", "Added grid line (headers incomplete): '" + line + "'");
+                }
+                else if (!line.empty()) {
+                    // This looks like it could be extra metadata
+                    std::string warnMsg = "Ignoring extra metadata line in " + path + ": " + line;
+                    logWarn("MAPLOADER", "loadMapWithParams", warnMsg);
+                    mapLoadErrors_.push_back({path, warnMsg, currentTimestamp()});
                 }
             }
         }
@@ -373,14 +464,24 @@ MapData Simulator::loadMapWithParams(const std::string& path) const {
         throw std::runtime_error(errorMsg);
     }
 
+    // Handle dimension mismatches gracefully - log but don't throw
+    if (rawGridLines.size() != rows) {
+        std::string errorMsg = "Map dimension mismatch in " + path + 
+                              ": expected " + std::to_string(rows) + 
+                              " rows, found " + std::to_string(rawGridLines.size()) + 
+                              " (will be adjusted automatically)";
+        mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+        logWarn("MAPLOADER", "loadMapWithParams", errorMsg);
+    }
+
     logDebug("MAPLOADER", "loadMapWithParams", 
         "Parsed map parameters - rows=" + std::to_string(rows) + 
         ", cols=" + std::to_string(cols) + 
         ", maxSteps=" + std::to_string(maxSteps) + 
         ", numShells=" + std::to_string(numShells));
 
-    // Normalize the grid to match header dimensions
-    auto normalizedGrid = normalizeGrid(rawGridLines, rows, cols);
+    // Clean and normalize the grid to match header dimensions
+    auto normalizedGrid = cleanAndNormalizeGrid(rawGridLines, rows, cols, path);
 
     if (config_.debug) {
         logDebug("MAPLOADER", "loadMapWithParams", "Normalized grid:");
@@ -395,7 +496,7 @@ MapData Simulator::loadMapWithParams(const std::string& path) const {
         }
     }
 
-    // Build SatelliteView
+    // Build MapData and return (keeping your existing MapView creation)
     class MapView : public SatelliteView {
     public:
         MapView(std::vector<std::string>&& rows)
@@ -423,64 +524,304 @@ MapData Simulator::loadMapWithParams(const std::string& path) const {
     return md;
 }
 
-// Grid normalization to handle flexible dimensions
-std::vector<std::string> Simulator::normalizeGrid(const std::vector<std::string>& rawGrid, 
-                                                  size_t targetRows, size_t targetCols) const {
-    std::vector<std::string> normalized;
-    normalized.reserve(targetRows);
-    
-    logDebug("MAPLOADER", "normalizeGrid", 
-        "Normalizing grid from " + std::to_string(rawGrid.size()) + " rows to " + 
-        std::to_string(targetRows) + " rows, " + std::to_string(targetCols) + " cols");
 
-    for (size_t row = 0; row < targetRows; ++row) {
-        std::string normalizedRow;
-        normalizedRow.reserve(targetCols);
-        
-        if (row < rawGrid.size()) {
-            // Process existing row
-            const std::string& sourceRow = rawGrid[row];
-            
-            for (size_t col = 0; col < targetCols; ++col) {
-                if (col < sourceRow.size()) {
-                    // Normalize the character
-                    normalizedRow += normalizeCell(sourceRow[col]);
-                } else {
-                    // Fill missing columns with spaces
-                    normalizedRow += ' ';
-                }
-            }
-            
-            // Log if we truncated columns
-            if (sourceRow.size() > targetCols) {
-                logDebug("MAPLOADER", "normalizeGrid", 
-                    "Row " + std::to_string(row) + " truncated from " + 
-                    std::to_string(sourceRow.size()) + " to " + std::to_string(targetCols) + " cols");
-            }
-            // Log if we padded columns
-            else if (sourceRow.size() < targetCols) {
-                logDebug("MAPLOADER", "normalizeGrid", 
-                    "Row " + std::to_string(row) + " padded from " + 
-                    std::to_string(sourceRow.size()) + " to " + std::to_string(targetCols) + " cols");
-            }
-        } else {
-            // Fill missing rows with spaces
-            normalizedRow = std::string(targetCols, ' ');
-            logDebug("MAPLOADER", "normalizeGrid", 
-                "Row " + std::to_string(row) + " created as empty (missing from source)");
-        }
-        
-        normalized.push_back(std::move(normalizedRow));
-    }
+
+// // Map loading with enhanced error handling and flexibility
+// MapData Simulator::loadMapWithParams(const std::string& path) const {
+//     logDebug("MAPLOADER", "loadMapWithParams", "Loading map from: " + path);
     
-    // Log if we ignored extra rows
-    if (rawGrid.size() > targetRows) {
-        logDebug("MAPLOADER", "normalizeGrid", 
-            "Ignored " + std::to_string(rawGrid.size() - targetRows) + " extra rows");
-    }
+//     std::ifstream in(path);
+//     if (!in.is_open()) {
+//         std::string errorMsg = "Failed to open map file: " + path;
+//         mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//         LOG_ERROR(errorMsg);
+//         throw std::runtime_error(errorMsg);
+//     }
+
+//     size_t rows = 0, cols = 0, maxSteps = 0, numShells = 0;
+//     std::vector<std::string> rawGridLines;
+//     std::string line;
+//     bool foundRows = false, foundCols = false, foundMaxSteps = false, foundNumShells = false;
+
+//     while (std::getline(in, line)) {
+//         if (!line.empty() && line.back() == '\r') line.pop_back();
+        
+//         if (line.rfind("Rows", 0) == 0) {
+//             auto eqPos = line.find('=');
+//             if (eqPos == std::string::npos) {
+//                 std::string errorMsg = "Invalid Rows format in " + path + ": " + line + " (missing '=' sign)";
+//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//                 LOG_ERROR(errorMsg);
+//                 throw std::runtime_error(errorMsg);
+//             }
+//             // Check for spaces around '=' sign
+//             if (eqPos > 4 && line[eqPos - 1] == ' ') {
+//                 std::string errorMsg = "Invalid Rows format in " + path + ": " + line + " (space before '=' sign)";
+//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//                 LOG_ERROR(errorMsg);
+//                 throw std::runtime_error(errorMsg);
+//             }
+//             if (eqPos + 1 < line.length() && line[eqPos + 1] == ' ') {
+//                 std::string errorMsg = "Invalid Rows format in " + path + ": " + line + " (space after '=' sign)";
+//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//                 LOG_ERROR(errorMsg);
+//                 throw std::runtime_error(errorMsg);
+//             }
+//             try {
+//                 rows = std::stoul(line.substr(eqPos + 1));
+//                 foundRows = true;
+//             } catch (const std::exception& e) {
+//                 std::string errorMsg = "Invalid Rows value in " + path + ": " + line;
+//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//                 LOG_ERROR(errorMsg);
+//                 throw std::runtime_error(errorMsg);
+//             }
+//         } else if (line.rfind("Cols", 0) == 0) {
+//             auto eqPos = line.find('=');
+//             if (eqPos == std::string::npos) {
+//                 std::string errorMsg = "Invalid Cols format in " + path + ": " + line + " (missing '=' sign)";
+//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//                 LOG_ERROR(errorMsg);
+//                 throw std::runtime_error(errorMsg);
+//             }
+//             // Check for spaces around '=' sign
+//             if (eqPos > 4 && line[eqPos - 1] == ' ') {
+//                 std::string errorMsg = "Invalid Cols format in " + path + ": " + line + " (space before '=' sign)";
+//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//                 LOG_ERROR(errorMsg);
+//                 throw std::runtime_error(errorMsg);
+//             }
+//             if (eqPos + 1 < line.length() && line[eqPos + 1] == ' ') {
+//                 std::string errorMsg = "Invalid Cols format in " + path + ": " + line + " (space after '=' sign)";
+//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//                 LOG_ERROR(errorMsg);
+//                 throw std::runtime_error(errorMsg);
+//             }
+//             try {
+//                 cols = std::stoul(line.substr(eqPos + 1));
+//                 foundCols = true;
+//             } catch (const std::exception& e) {
+//                 std::string errorMsg = "Invalid Cols value in " + path + ": " + line;
+//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//                 LOG_ERROR(errorMsg);
+//                 throw std::runtime_error(errorMsg);
+//             }
+//         } else if (line.rfind("MaxSteps", 0) == 0) {
+//             auto eqPos = line.find('=');
+//             if (eqPos == std::string::npos) {
+//                 std::string errorMsg = "Invalid MaxSteps format in " + path + ": " + line + " (missing '=' sign)";
+//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//                 LOG_ERROR(errorMsg);
+//                 throw std::runtime_error(errorMsg);
+//             }
+//             // Check for spaces around '=' sign
+//             if (eqPos > 8 && line[eqPos - 1] == ' ') {
+//                 std::string errorMsg = "Invalid MaxSteps format in " + path + ": " + line + " (space before '=' sign)";
+//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//                 LOG_ERROR(errorMsg);
+//                 throw std::runtime_error(errorMsg);
+//             }
+//             if (eqPos + 1 < line.length() && line[eqPos + 1] == ' ') {
+//                 std::string errorMsg = "Invalid MaxSteps format in " + path + ": " + line + " (space after '=' sign)";
+//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//                 LOG_ERROR(errorMsg);
+//                 throw std::runtime_error(errorMsg);
+//             }
+//             try {
+//                 maxSteps = std::stoul(line.substr(eqPos + 1));
+//                 foundMaxSteps = true;
+//             } catch (const std::exception& e) {
+//                 std::string errorMsg = "Invalid MaxSteps value in " + path + ": " + line;
+//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//                 LOG_ERROR(errorMsg);
+//                 throw std::runtime_error(errorMsg);
+//             }
+//         } else if (line.rfind("NumShells", 0) == 0) {
+//             auto eqPos = line.find('=');
+//             if (eqPos == std::string::npos) {
+//                 std::string errorMsg = "Invalid NumShells format in " + path + ": " + line + " (missing '=' sign)";
+//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//                 LOG_ERROR(errorMsg);
+//                 throw std::runtime_error(errorMsg);
+//             }
+//             // Check for spaces around '=' sign
+//             if (eqPos > 9 && line[eqPos - 1] == ' ') {
+//                 std::string errorMsg = "Invalid NumShells format in " + path + ": " + line + " (space before '=' sign)";
+//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//                 LOG_ERROR(errorMsg);
+//                 throw std::runtime_error(errorMsg);
+//             }
+//             if (eqPos + 1 < line.length() && line[eqPos + 1] == ' ') {
+//                 std::string errorMsg = "Invalid NumShells format in " + path + ": " + line + " (space after '=' sign)";
+//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//                 LOG_ERROR(errorMsg);
+//                 throw std::runtime_error(errorMsg);
+//             }
+//             try {
+//                 numShells = std::stoul(line.substr(eqPos + 1));
+//                 foundNumShells = true;
+//             } catch (const std::exception& e) {
+//                 std::string errorMsg = "Invalid NumShells value in " + path + ": " + line;
+//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//                 LOG_ERROR(errorMsg);
+//                 throw std::runtime_error(errorMsg);
+//             }
+//         } else {
+//             if (!line.empty()) {
+//                 // Check if this looks like a grid line (contains game characters)
+//                 bool looksLikeGrid = false;
+//                 for (char c : line) {
+//                     if (c == '.' || c == '#' || c == '@' || c == '1' || c == '2' || c == ' ') {
+//                         looksLikeGrid = true;
+//                         break;
+//                     }
+//                 }
+//                 if (looksLikeGrid) {
+//                     rawGridLines.push_back(line);
+//                     logDebug("MAPLOADER", "loadMapWithParams", "Added grid line: '" + line + "'");
+//                 } else {
+//                     logDebug("MAPLOADER", "loadMapWithParams", "Ignoring non-grid line: '" + line + "'");
+//                 }
+//             }
+//         }
+//     }
+
+//     // Check for missing headers
+//     std::vector<std::string> missingHeaders;
+//     if (!foundRows) missingHeaders.push_back("Rows");
+//     if (!foundCols) missingHeaders.push_back("Cols");
+//     if (!foundMaxSteps) missingHeaders.push_back("MaxSteps");
+//     if (!foundNumShells) missingHeaders.push_back("NumShells");
     
-    return normalized;
-}
+//     if (!missingHeaders.empty()) {
+//         std::string errorMsg = "Missing required headers in " + path + ": ";
+//         for (size_t i = 0; i < missingHeaders.size(); ++i) {
+//             errorMsg += missingHeaders[i];
+//             if (i + 1 < missingHeaders.size()) errorMsg += ", ";
+//         }
+//         mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//         LOG_ERROR(errorMsg);
+//         throw std::runtime_error(errorMsg);
+//     }
+
+//     // Validate dimensions
+//     if (rows == 0 || cols == 0) {
+//         std::string errorMsg = "Invalid dimensions in " + path + 
+//                               ": rows=" + std::to_string(rows) + 
+//                               ", cols=" + std::to_string(cols);
+//         mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
+//         LOG_ERROR(errorMsg);
+//         throw std::runtime_error(errorMsg);
+//     }
+
+//     logDebug("MAPLOADER", "loadMapWithParams", 
+//         "Parsed map parameters - rows=" + std::to_string(rows) + 
+//         ", cols=" + std::to_string(cols) + 
+//         ", maxSteps=" + std::to_string(maxSteps) + 
+//         ", numShells=" + std::to_string(numShells));
+
+//     // Normalize the grid to match header dimensions
+//     auto normalizedGrid = normalizeGrid(rawGridLines, rows, cols);
+
+//     if (config_.debug) {
+//         logDebug("MAPLOADER", "loadMapWithParams", "Normalized grid:");
+//         for (size_t r = 0; r < normalizedGrid.size(); ++r) {
+//             std::string debugStr = "Row " + std::to_string(r) + ": '";
+//             for (char c : normalizedGrid[r]) {
+//                 if (c == ' ') debugStr += "_";  // Show spaces as underscores for clarity
+//                 else debugStr += c;
+//             }
+//             debugStr += "'";
+//             logDebug("MAPLOADER", "loadMapWithParams", debugStr);
+//         }
+//     }
+
+//     // Build SatelliteView
+//     class MapView : public SatelliteView {
+//     public:
+//         MapView(std::vector<std::string>&& rows)
+//             : rows_(std::move(rows)),
+//               width_(rows_.empty() ? 0 : rows_[0].size()),
+//               height_(rows_.size()) {}
+//         char getObjectAt(size_t x, size_t y) const override {
+//             return (y < height_ && x < width_) ? rows_[y][x] : ' ';
+//         }
+//         size_t width() const { return width_; }
+//         size_t height() const { return height_; }
+//     private:
+//         std::vector<std::string> rows_;
+//         size_t width_, height_;
+//     };
+
+//     MapData md;
+//     md.rows = rows;
+//     md.cols = cols;
+//     md.maxSteps = maxSteps;
+//     md.numShells = numShells;
+//     md.view = std::make_unique<MapView>(std::move(normalizedGrid));
+    
+//     logDebug("MAPLOADER", "loadMapWithParams", "Map loaded successfully");
+//     return md;
+// }
+
+// Grid normalization to handle flexible dimensions
+// std::vector<std::string> Simulator::normalizeGrid(const std::vector<std::string>& rawGrid, 
+//                                                   size_t targetRows, size_t targetCols) const {
+//     std::vector<std::string> normalized;
+//     normalized.reserve(targetRows);
+    
+//     logDebug("MAPLOADER", "normalizeGrid", 
+//         "Normalizing grid from " + std::to_string(rawGrid.size()) + " rows to " + 
+//         std::to_string(targetRows) + " rows, " + std::to_string(targetCols) + " cols");
+
+//     for (size_t row = 0; row < targetRows; ++row) {
+//         std::string normalizedRow;
+//         normalizedRow.reserve(targetCols);
+        
+//         if (row < rawGrid.size()) {
+//             // Process existing row
+//             const std::string& sourceRow = rawGrid[row];
+            
+//             for (size_t col = 0; col < targetCols; ++col) {
+//                 if (col < sourceRow.size()) {
+//                     // Normalize the character
+//                     normalizedRow += normalizeCell(sourceRow[col]);
+//                 } else {
+//                     // Fill missing columns with spaces
+//                     normalizedRow += ' ';
+//                 }
+//             }
+            
+//             // Log if we truncated columns
+//             if (sourceRow.size() > targetCols) {
+//                 logDebug("MAPLOADER", "normalizeGrid", 
+//                     "Row " + std::to_string(row) + " truncated from " + 
+//                     std::to_string(sourceRow.size()) + " to " + std::to_string(targetCols) + " cols");
+//             }
+//             // Log if we padded columns
+//             else if (sourceRow.size() < targetCols) {
+//                 logDebug("MAPLOADER", "normalizeGrid", 
+//                     "Row " + std::to_string(row) + " padded from " + 
+//                     std::to_string(sourceRow.size()) + " to " + std::to_string(targetCols) + " cols");
+//             }
+//         } else {
+//             // Fill missing rows with spaces
+//             normalizedRow = std::string(targetCols, ' ');
+//             logDebug("MAPLOADER", "normalizeGrid", 
+//                 "Row " + std::to_string(row) + " created as empty (missing from source)");
+//         }
+        
+//         normalized.push_back(std::move(normalizedRow));
+//     }
+    
+//     // Log if we ignored extra rows
+//     if (rawGrid.size() > targetRows) {
+//         logDebug("MAPLOADER", "normalizeGrid", 
+//             "Ignored " + std::to_string(rawGrid.size() - targetRows) + " extra rows");
+//     }
+    
+//     return normalized;
+// }
 
 // Character normalization - only keep valid game objects
 char Simulator::normalizeCell(char c) const {
