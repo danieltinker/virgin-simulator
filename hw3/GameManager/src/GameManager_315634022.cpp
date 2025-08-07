@@ -66,6 +66,7 @@ GameResult MyGameManager_315634022::run(
     TankAlgorithmFactory player2_tank_algo_factory     
 ) {
     INFO_PRINT("GAMEMANAGER", "run", "GameManager_315634022 starting game execution");
+    // throw std::runtime_error("GameManager_315634022 is Fucking With you"); 
     DEBUG_PRINT("GAMEMANAGER", "run", 
         "Game parameters - Map: " + map_name + 
         ", Size: " + std::to_string(map_width) + "x" + std::to_string(map_height) + 

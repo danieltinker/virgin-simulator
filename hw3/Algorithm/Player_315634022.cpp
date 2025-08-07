@@ -114,9 +114,9 @@ void Player_315634022::updateTankWithBattleInfo(TankAlgorithm &tank,
                 }
                 
                 // Safe SatelliteView access
-                DEBUG_LOG("TRACE", "Reading position (" << x << "," << y << ")");
+                // DEBUG_LOG("TRACE", "Reading position (" << x << "," << y << ")");
                 char c = view.getObjectAt(x, y);
-                DEBUG_LOG("TRACE", "Position (" << x << "," << y << "): '" << c << "'");
+                // DEBUG_LOG("TRACE", "Position (" << x << "," << y << "): '" << c << "'");
                 
                 info.grid[y][x] = c;
                 
