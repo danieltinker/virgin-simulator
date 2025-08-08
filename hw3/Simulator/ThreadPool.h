@@ -6,7 +6,6 @@
 #include <mutex>
 #include <condition_variable>
 
-// namespace UserCommon_315634022 {
 
 // A fixed‐size thread‐pool. Enqueue tasks; they’ll run on worker threads.
 class ThreadPool {
@@ -28,4 +27,3 @@ private:
     bool stop_ = false;
 };
 
-// } // namespace UserCommon_315634022

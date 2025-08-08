@@ -27,3 +27,19 @@ bool parseArguments(int argc, char* argv[], Config& cfg);
 
 // Prints usage to stderr.
 void printUsage(const char* prog);
+
+// Internal parsing helpers
+void parseArgumentsList(int argc, char* argv[], Config& cfg, std::vector<std::string>& unsupported);
+bool processArgument(const std::string& arg, Config& cfg);
+bool validateArguments(const Config& cfg, const std::vector<std::string>& unsupported, const char* prog);
+bool checkUnsupportedArgs(const std::vector<std::string>& unsupported, const char* prog);
+bool checkModeSelection(const Config& cfg, const char* prog);
+bool checkRequiredArgs(const Config& cfg, const char* prog);
+void collectMissingArgs(const Config& cfg, std::vector<std::string>& missing);
+bool validatePaths(const Config& cfg);
+bool validateComparativePaths(const Config& cfg);
+bool validateCompetitionPaths(const Config& cfg);
+bool mustBeDir(const std::string& path, const char* name);
+bool mustBeFile(const std::string& path, const char* name);
+bool checkSoFiles(const std::string& dirPath, const char* name);
+std::string stripKey(const std::string& arg, const std::string& key);

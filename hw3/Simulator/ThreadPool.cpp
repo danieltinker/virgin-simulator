@@ -38,8 +38,6 @@ static std::mutex g_debug_mutex;
         std::cerr << "[T" << std::this_thread::get_id() << "] [ERROR] [" << component << "] [" << function << "] " << message << std::endl; \
     } while(0)
 
-// namespace UserCommon_315634022 {
-
 ThreadPool::ThreadPool(size_t numThreads) {
     INFO_PRINT("THREADPOOL", "constructor", 
         "Creating ThreadPool with " + std::to_string(numThreads) + " worker threads");
@@ -48,7 +46,6 @@ ThreadPool::ThreadPool(size_t numThreads) {
         workers_.emplace_back([this, i] {
             INFO_PRINT("THREADWORKER", "worker_main", 
                 "Worker " + std::to_string(i) + " started");
-            
             while (true) {
                 std::function<void()> task;
                 {
@@ -118,7 +115,7 @@ void ThreadPool::enqueue(std::function<void()> task) {
 
 void ThreadPool::shutdown() {
     DEBUG_PRINT("THREADPOOL", "shutdown", "Initiating ThreadPool shutdown", true);
-    
+
     size_t pending_tasks;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -155,4 +152,3 @@ void ThreadPool::shutdown() {
     INFO_PRINT("THREADPOOL", "shutdown", "ThreadPool shutdown completed");
 }
 
-// } // namespace UserCommon_315634022

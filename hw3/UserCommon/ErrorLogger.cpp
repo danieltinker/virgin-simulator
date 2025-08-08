@@ -6,7 +6,7 @@
 #include <sstream>
 #include <iostream>
 #include <stdexcept>
-
+using namespace UserCommon_315634022;
 ErrorLogger& ErrorLogger::instance() {
     static ErrorLogger logger;
     return logger;

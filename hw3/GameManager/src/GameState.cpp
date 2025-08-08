@@ -201,6 +201,42 @@ GameState::GameState(
     shells_.clear();
     toRemove_.clear();
     positionMap_.clear();
+
+        INFO_PRINT("GAMESTATE", "constructor", "Checking for immediate victory conditions");
+    
+    size_t player1_tanks = 0, player2_tanks = 0;
+    for (const auto& ts : all_tanks_) {
+        if (ts.alive) {
+            if (ts.player_index == 1) player1_tanks++;
+            else if (ts.player_index == 2) player2_tanks++;
+        }
+    }
+    
+    DEBUG_PRINT("GAMESTATE", "constructor", 
+        "Tank count after initialization - Player1: " + std::to_string(player1_tanks) + 
+        ", Player2: " + std::to_string(player2_tanks), verbose_);
+    
+    // Check for immediate game end conditions
+    if (player1_tanks == 0 && player2_tanks == 0) {
+        gameOver_ = true;
+        resultStr_ = "Tie, both players have zero tanks on the board";
+        INFO_PRINT("GAMESTATE", "constructor", "Immediate tie declared - no tanks on board");
+    }
+    else if (player1_tanks == 0) {
+        gameOver_ = true;
+        resultStr_ = "Player 2 won with " + std::to_string(player2_tanks) + " tanks (technical victory - no enemy tanks)";
+        INFO_PRINT("GAMESTATE", "constructor", "Immediate Player 2 victory declared");
+    }
+    else if (player2_tanks == 0) {
+        gameOver_ = true;
+        resultStr_ = "Player 1 won with " + std::to_string(player1_tanks) + " tanks (technical victory - no enemy tanks)";
+        INFO_PRINT("GAMESTATE", "constructor", "Immediate Player 1 victory declared");
+    }
+    else {
+        INFO_PRINT("GAMESTATE", "constructor", "Game will proceed normally - both players have tanks");
+    }
+
+    INFO_PRINT("GAMESTATE", "constructor", "GameState initialization completed successfully");
     
     INFO_PRINT("GAMESTATE", "constructor", "GameState initialization completed successfully");
 }

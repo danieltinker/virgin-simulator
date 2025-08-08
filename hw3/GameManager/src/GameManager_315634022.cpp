@@ -78,6 +78,24 @@ GameResult MyGameManager_315634022::run(
     initializeGame(map_width, map_height, map, map_name, max_steps, num_shells,
                    player1, name1, player2, name2, 
                    player1_tank_algo_factory, player2_tank_algo_factory);
+
+    if (state_->isGameOver()) {
+            INFO_PRINT("GAMEMANAGER", "run", "Game ended immediately due to tank configuration");
+            
+            // Log the immediate result if verbose mode is enabled
+            if (verbose_) {
+                std::string resultStr = state_->getResultString();
+                INFO_PRINT("GAMEMANAGER", "run", "Immediate game result: " + resultStr);
+                log_file_ << "Game ended immediately: " << resultStr << "\n";
+                log_file_.close();
+            }
+            
+            GameResult result = finalize();
+            INFO_PRINT("GAMEMANAGER", "run", "Game execution completed immediately (technical victory)");
+            return result;
+        }
+
+    
     gameLoop();
     GameResult result = finalize();
     

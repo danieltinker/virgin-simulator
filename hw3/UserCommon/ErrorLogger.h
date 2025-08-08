@@ -4,7 +4,7 @@
 #include <mutex>
 #include <string>
 #include <cstdarg>
-
+namespace UserCommon_315634022 {
 class ErrorLogger {
 public:
     static ErrorLogger& instance();
@@ -31,3 +31,4 @@ private:
 
     std::string currentTimestamp() const;
 };
+}

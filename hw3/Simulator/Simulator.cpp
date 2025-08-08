@@ -1,12 +1,10 @@
 #include "Simulator.h"
 #include "ArgParser.h"
-#include "AlgorithmRegistrar.h"
-#include "GameManagerRegistrar.h"
 #include "ThreadPool.h"
 #include "SatelliteView.h"
 #include "GameResult.h"
-
 #include "ErrorLogger.h"
+
 #include <set>
 #include <iostream>
 #include <filesystem>
@@ -19,6 +17,7 @@
 #include <dlfcn.h>
 #include <stdexcept>
 
+using namespace UserCommon_315634022;
 namespace fs = std::filesystem;
 
 // Static member definitions
@@ -35,10 +34,6 @@ CompetitionEntry::CompetitionEntry(std::string m, std::string x, std::string y, 
 // Constructor
 Simulator::Simulator(const Config& config) 
     : config_(config) {
-    // Initialize ErrorLogger first
-    // ErrorLogger::instance().init();
-    
-    // initErrorLog();
     logInfo("SIMULATOR", "constructor", "Initializing Simulator in " + 
         std::string(config_.modeComparative ? "comparative" : "competition") + " mode");
     
@@ -49,7 +44,6 @@ Simulator::Simulator(const Config& config)
 
 // Destructor
 Simulator::~Simulator() {
-    
     logInfo("SIMULATOR", "destructor", "Cleaning up Simulator");
     // writeMapErrors(); // Write any accumulated map errors before cleanup
     // cleanup();
@@ -68,44 +62,27 @@ int Simulator::run() {
 // Comparative mode implementation
 int Simulator::runComparative() {
     logInfo("SIMULATOR", "runComparative", "Starting comparative mode");
-
-    // 1) Load map + params
     MapData md;
-    try {
-        md = loadMapWithParams(config_.game_map);
-    } catch (const std::exception& ex) {
-        std::string errorMsg = "Error loading map: " + std::string(ex.what());
-        logError("SIMULATOR", "runComparative", errorMsg);
-        ErrorLogger::instance().log(errorMsg);
-        return 1;
-    }
-
-    // 2) Load Algorithms (must succeed)
+    // try {
+    //     md = loadMapWithParams(config_.game_map);
+    // } catch (const std::exception& ex) {
+    //     std::string errorMsg = "Error loading map: " + std::string(ex.what());
+    //     logError("SIMULATOR", "runComparative", errorMsg);
+    //     return 1;
+    // }
     if (!loadAlgorithmPlugins()) {
         std::string errorMsg = "Failed to load required algorithms";
         logError("SIMULATOR", "runComparative", errorMsg);
-        ErrorLogger::instance().log(errorMsg);
         return 1;
     }
-    
-    // 3) Load GameManagers (resilient)
     if (!loadGameManagerPlugins()) {
         std::string errorMsg = "Failed to load any GameManager plugins";
         logError("SIMULATOR", "runComparative", errorMsg);
-        ErrorLogger::instance().log(errorMsg);
         return 1;
     }
-    
-    logInfo("SIMULATOR", "runComparative", 
-        "Successfully loaded " + std::to_string(loadedGameManagers_) + " GameManager(s)");
-        
-    // 4) Dispatch tasks
+    logInfo("SIMULATOR", "runComparative", "Successfully loaded " + std::to_string(loadedGameManagers_) + " GameManager(s)");
     dispatchComparativeTasks();
-        
-    // 5) Write results
     writeComparativeFile(comparativeResults_);
-
-    // 6) Report summary
     logInfo("SIMULATOR", "runComparative", "Comparative Results Summary:");
     for (const auto& e : comparativeResults_) {
         logInfo("RESULTS", "runComparative", 
@@ -114,126 +91,109 @@ int Simulator::runComparative() {
             " reason=" + std::to_string(static_cast<int>(e.res.reason)) + 
             " rounds=" + std::to_string(e.res.rounds));
     }
-
     return 0;
 }
 
 // Competition mode implementation
 int Simulator::runCompetition() {
     logInfo("SIMULATOR", "runCompetition", "Starting competition mode");
-
-    // 1) Gather maps
     std::vector<std::string> maps;
     for (auto& e : fs::directory_iterator(config_.game_maps_folder)) {
-        if (e.is_regular_file()) {
-            maps.push_back(e.path().string());
-        }
+        if (e.is_regular_file()) {maps.push_back(e.path().string());}
     }
     if (maps.empty()) {
         std::string errorMsg = "No files found in game_maps_folder";
         logError("SIMULATOR", "runCompetition", errorMsg);
-        ErrorLogger::instance().log(errorMsg);
         return 1;
     }
-
     logDebug("SIMULATOR", "runCompetition", "Found " + std::to_string(maps.size()) + " map files");
-
-    // 2) Load GameManager (must succeed)
     if (!loadSingleGameManager()) {
         std::string errorMsg = "Failed to load GameManager";
         logError("SIMULATOR", "runCompetition", errorMsg);
-        ErrorLogger::instance().log(errorMsg);
         return 1;
     }
-
-    // 3) Load Algorithms (resilient, need at least 2)
     if (!loadAlgorithmPlugins()) {
         std::string errorMsg = "Failed to load sufficient algorithms";
         logError("SIMULATOR", "runCompetition", errorMsg);
-        ErrorLogger::instance().log(errorMsg);
         return 1;
     }
-
     if (loadedAlgorithms_ < 2) {
         std::string errorMsg = "Need at least 2 algorithms, found " + std::to_string(loadedAlgorithms_);
         logError("SIMULATOR", "runCompetition", errorMsg);
-        ErrorLogger::instance().log(errorMsg);
         return 1;
     }
-
-    logInfo("SIMULATOR", "runCompetition", 
-        "Successfully loaded " + std::to_string(loadedAlgorithms_) + " algorithm(s)");
-
-    // 4) Dispatch tasks
+    logInfo("SIMULATOR", "runCompetition", "Successfully loaded " + std::to_string(loadedAlgorithms_) + " algorithm(s)");
     dispatchCompetitionTasks();
-
-    // 5) Write results
     writeCompetitionFile(competitionResults_);
-
-    // 6) Report summary
     logInfo("SIMULATOR", "runCompetition", "Competition Results Summary:");
     for (const auto& e : competitionResults_) {
-        logInfo("RESULTS", "runCompetition", 
-            "Map=" + e.mapFile + 
-            " A1=" + e.a1 + 
-            " A2=" + e.a2 + 
-            " => winner=" + std::to_string(e.res.winner) + 
-            " reason=" + std::to_string(static_cast<int>(e.res.reason)) + 
-            " rounds=" + std::to_string(e.res.rounds));
+        logInfo("RESULTS", "runCompetition", "Map=" + e.mapFile + " A1=" + e.a1 + " A2=" + e.a2 + " => winner=" + std::to_string(e.res.winner) + " reason=" + std::to_string(static_cast<int>(e.res.reason)) + " rounds=" + std::to_string(e.res.rounds));
     }
-
     return 0;
 }
-
-
 
 // Helper method to parse parameter lines with flexible spacing around '='
 bool Simulator::parseParameter(const std::string& line, const std::string& paramName, 
                               size_t& value, const std::string& path) const {
-    // Find the parameter name at the start of the line
+    validateParameterStart(line, paramName, path);
+    auto eqPos = findEqualsSign(line, path);
+    std::string beforeEquals = extractAndTrimBeforeEquals(line, eqPos);
+    validateParameterName(beforeEquals, paramName, line, path);
+    std::string afterEquals = extractAndTrimAfterEquals(line, eqPos);
+    parseParameterValue(afterEquals, paramName, value, line, path);
+    return true;
+}
+
+void Simulator::validateParameterStart(const std::string& line, const std::string& paramName, 
+                                     const std::string& path) const {
     if (line.find(paramName) != 0) {
         std::string errorMsg = "Parameter line doesn't start with '" + paramName + "' in " + path + ": " + line;
-        // mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-        ErrorLogger::instance().log(errorMsg);
+        logError("SIMULATOR", "parseParameter", errorMsg);
         throw std::runtime_error(errorMsg);
     }
-    
-    // Find the '=' sign
+}
+
+size_t Simulator::findEqualsSign(const std::string& line, const std::string& path) const {
     auto eqPos = line.find('=');
     if (eqPos == std::string::npos) {
         std::string errorMsg = "Missing '=' in parameter line in " + path + ": " + line;
-        // mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-        ErrorLogger::instance().log(errorMsg);
+        logError("SIMULATOR", "parseParameter", errorMsg);
         throw std::runtime_error(errorMsg);
     }
-    
-    // Extract the part before '=' and trim whitespace
+    return eqPos;
+}
+
+std::string Simulator::extractAndTrimBeforeEquals(const std::string& line, size_t eqPos) const {
     std::string beforeEquals = line.substr(0, eqPos);
     beforeEquals.erase(beforeEquals.find_last_not_of(" \t") + 1); // trim right
-    
-    // Check that the trimmed part exactly matches the parameter name
+    return beforeEquals;
+}
+
+void Simulator::validateParameterName(const std::string& beforeEquals, const std::string& paramName,
+                                     const std::string& line, const std::string& path) const {
     if (beforeEquals != paramName) {
         std::string errorMsg = "Invalid parameter name in " + path + ": expected '" + 
                               paramName + "', got '" + beforeEquals + "' in line: " + line;
-        // mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-        ErrorLogger::instance().log(errorMsg);
+        logError("SIMULATOR", "parseParameter", errorMsg);
         throw std::runtime_error(errorMsg);
     }
-    
-    // Extract the part after '=' and trim whitespace
+}
+
+std::string Simulator::extractAndTrimAfterEquals(const std::string& line, size_t eqPos) const {
     std::string afterEquals = line.substr(eqPos + 1);
     afterEquals.erase(0, afterEquals.find_first_not_of(" \t")); // trim left
     afterEquals.erase(afterEquals.find_last_not_of(" \t") + 1); // trim right
-    
-    // Parse the value
+    return afterEquals;
+}
+
+void Simulator::parseParameterValue(const std::string& afterEquals, const std::string& paramName,
+                                   size_t& value, const std::string& line, const std::string& path) const {
     try {
         value = std::stoul(afterEquals);
-        return true;
     } catch (const std::exception& e) {
         std::string errorMsg = "Invalid " + paramName + " value in " + path + ": '" + 
                               afterEquals + "' in line: " + line;
-        // mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-        ErrorLogger::instance().log(errorMsg);
+        logError("SIMULATOR", "parseParameter", errorMsg);
         throw std::runtime_error(errorMsg);
     }
 }
@@ -259,196 +219,187 @@ std::vector<std::string> Simulator::cleanAndNormalizeGrid(const std::vector<std:
                                                           const std::string& path) const {
     std::vector<std::string> normalized;
     normalized.reserve(targetRows);
-    
-    logDebug("MAPLOADER", "cleanAndNormalizeGrid", 
-        "Normalizing grid from " + std::to_string(rawGrid.size()) + " rows to " + 
-        std::to_string(targetRows) + " rows, " + std::to_string(targetCols) + " cols");
-
-    bool foundInvalidChars = false;
     std::set<char> invalidCharsFound;
 
+    processGridRows(rawGrid, normalized, targetRows, targetCols, invalidCharsFound);
+    logExtraRowsIgnored(rawGrid, targetRows);
+    logInvalidCharacters(invalidCharsFound, path);
+    
+    return normalized;
+}
+
+void Simulator::processGridRows(const std::vector<std::string>& rawGrid, 
+                               std::vector<std::string>& normalized,
+                               size_t targetRows, size_t targetCols, 
+                               std::set<char>& invalidCharsFound) const {
     for (size_t row = 0; row < targetRows; ++row) {
         std::string normalizedRow;
         normalizedRow.reserve(targetCols);
         
         if (row < rawGrid.size()) {
-            // Process existing row
-            const std::string& sourceRow = rawGrid[row];
-            
-            for (size_t col = 0; col < targetCols; ++col) {
-                if (col < sourceRow.size()) {
-                    // Clean and normalize the character
-                    char originalChar = sourceRow[col];
-                    char cleanedChar = cleanCharacter(originalChar);
-                    
-                    if (originalChar != cleanedChar) {
-                        foundInvalidChars = true;
-                        invalidCharsFound.insert(originalChar);
-                    }
-                    
-                    normalizedRow += cleanedChar;
-                } else {
-                    // Fill missing columns with spaces
-                    normalizedRow += ' ';
-                }
-            }
-            
-            // Log if we truncated columns
-            if (sourceRow.size() > targetCols) {
-                // logDebug("MAPLOADER", "cleanAndNormalizeGrid", 
-                //     "Row " + std::to_string(row) + " truncated from " + 
-                //     std::to_string(sourceRow.size()) + " to " + std::to_string(targetCols) + " cols");
-
-                // std::string warnMsg = "Row " + std::to_string(row) + " truncated from " + 
-                //          std::to_string(sourceRow.size()) + " to " + std::to_string(targetCols) + 
-                //          " cols in " + path;
-                // logWarn("MAPLOADER", "cleanAndNormalizeGrid", warnMsg);    
-            }
-            // Log if we padded columns
-            else if (sourceRow.size() < targetCols) {
-                logDebug("MAPLOADER", "cleanAndNormalizeGrid", 
-                    "Row " + std::to_string(row) + " padded from " + 
-                    std::to_string(sourceRow.size()) + " to " + std::to_string(targetCols) + " cols");
-            }
+            processExistingRow(rawGrid[row], normalizedRow, targetCols, invalidCharsFound);
         } else {
-            // Fill missing rows with spaces
             normalizedRow = std::string(targetCols, ' ');
-            logDebug("MAPLOADER", "cleanAndNormalizeGrid", 
-                "Row " + std::to_string(row) + " created as empty (missing from source)");
         }
-        
         normalized.push_back(std::move(normalizedRow));
     }
-    
-    // Log if we ignored extra rows
+}
+
+void Simulator::processExistingRow(const std::string& sourceRow, std::string& normalizedRow,
+                                  size_t targetCols, std::set<char>& invalidCharsFound) const {
+    for (size_t col = 0; col < targetCols; ++col) {
+        if (col < sourceRow.size()) {
+            char originalChar = sourceRow[col];
+            char cleanedChar = cleanCharacter(originalChar);
+            
+            if (originalChar != cleanedChar) {
+                invalidCharsFound.insert(originalChar);
+            }
+            normalizedRow += cleanedChar;
+        } else {
+            normalizedRow += ' ';
+        }
+    }
+}
+
+void Simulator::logExtraRowsIgnored(const std::vector<std::string>& rawGrid, size_t targetRows) const {
     if (rawGrid.size() > targetRows) {
         logDebug("MAPLOADER", "cleanAndNormalizeGrid", 
             "Ignored " + std::to_string(rawGrid.size() - targetRows) + " extra rows");
     }
-    
-    // Log invalid characters found
-    if (foundInvalidChars) {
-        std::string invalidCharsStr;
-        for (char c : invalidCharsFound) {
-            if (!invalidCharsStr.empty()) invalidCharsStr += ", ";
-            if (c == ' ') invalidCharsStr += "' '";
-            else invalidCharsStr += "'" + std::string(1, c) + "'";
-        }
-        
-        std::string errorMsg = "Invalid characters found in " + path + 
-                              " (replaced with spaces): " + invalidCharsStr;
-        // mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-        logWarn("MAPLOADER", "cleanAndNormalizeGrid", errorMsg);
-        // ErrorLogger::instance().log("WARN: Invalid characters found in " + path + " (replaced with spaces): " + invalidCharsStr);
-
-    }
-    
-    return normalized;
 }
 
+void Simulator::logInvalidCharacters(const std::set<char>& invalidCharsFound, const std::string& path) const {
+    if (!invalidCharsFound.empty()) {
+        std::string invalidCharsStr = buildInvalidCharsString(invalidCharsFound);
+        std::string errorMsg = "Invalid characters found in " + path + 
+                              " (replaced with spaces): " + invalidCharsStr;
+        logWarn("MAPLOADER", "cleanAndNormalizeGrid", errorMsg);
+    }
+}
+
+std::string Simulator::buildInvalidCharsString(const std::set<char>& invalidChars) const {
+    std::string result;
+    for (char c : invalidChars) {
+        if (!result.empty()) result += ", ";
+        result += (c == ' ') ? "' '" : "'" + std::string(1, c) + "'";
+    }
+    return result;
+}
 // Fixed Map loading with enhanced error handling and flexibility
 MapData Simulator::loadMapWithParams(const std::string& path) const {
     logDebug("MAPLOADER", "loadMapWithParams", "Loading map from: " + path);
     
+    std::ifstream in = openMapFile(path);
+    MapParameters params = parseMapParameters(in, path);
+    validateMapParameters(params, path);
+    
+    std::vector<std::string> normalizedGrid = createNormalizedGrid(params);
+    if (config_.debug) {
+        logNormalizedGrid(normalizedGrid);
+    }
+    
+    return buildMapData(params, std::move(normalizedGrid));
+}
+
+std::ifstream Simulator::openMapFile(const std::string& path) const {
     std::ifstream in(path);
     if (!in.is_open()) {
         std::string errorMsg = "Failed to open map file: " + path;
-        // mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
         ErrorLogger::instance().log(errorMsg);
         throw std::runtime_error(errorMsg);
     }
+    return in;
+}
 
-    size_t rows = 0, cols = 0, maxSteps = 0, numShells = 0;
-    std::vector<std::string> rawGridLines;
+MapParameters Simulator::parseMapParameters(std::ifstream& in, const std::string& path) const {
+    MapParameters params;
+    params.path = path; 
     std::string line;
-    bool foundRows = false, foundCols = false, foundMaxSteps = false, foundNumShells = false;
+    
     int lineNumber = 0;
-    bool headersParsed = false;
-
+    
     while (std::getline(in, line)) {
         lineNumber++;
+        cleanLine(line);
         
-        // Remove carriage return if present
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
-        
-        // Skip map name/description (first line)
         if (lineNumber == 1) {
             logDebug("MAPLOADER", "loadMapWithParams", "Map name/description: " + line);
             continue;
         }
         
-        // Parse parameter lines (lines 2-5)
-        if (line.find("Rows") != std::string::npos && line.find("=") != std::string::npos) {
-            if (!parseParameter(line, "Rows", rows, path)) {
-                return MapData{}; // parseParameter already logged the error
-            }
-            foundRows = true;
-            logDebug("MAPLOADER", "loadMapWithParams", "Parsed Rows = " + std::to_string(rows));
-        }
-        else if (line.find("Cols") != std::string::npos && line.find("=") != std::string::npos) {
-            if (!parseParameter(line, "Cols", cols, path)) {
-                return MapData{}; // parseParameter already logged the error
-            }
-            foundCols = true;
-            logDebug("MAPLOADER", "loadMapWithParams", "Parsed Cols = " + std::to_string(cols));
-        }
-        else if (line.find("MaxSteps") != std::string::npos && line.find("=") != std::string::npos) {
-            if (!parseParameter(line, "MaxSteps", maxSteps, path)) {
-                return MapData{}; // parseParameter already logged the error
-            }
-            foundMaxSteps = true;
-            logDebug("MAPLOADER", "loadMapWithParams", "Parsed MaxSteps = " + std::to_string(maxSteps));
-        }
-        else if (line.find("NumShells") != std::string::npos && line.find("=") != std::string::npos) {
-            if (!parseParameter(line, "NumShells", numShells, path)) {
-                return MapData{}; // parseParameter already logged the error
-            }
-            foundNumShells = true;
-            logDebug("MAPLOADER", "loadMapWithParams", "Parsed NumShells = " + std::to_string(numShells));
-        }
-        else {
-            // Check if we've found all headers - if so, this should be map data
-            headersParsed = foundRows && foundCols && foundMaxSteps && foundNumShells;
-            
-            if (headersParsed) {
-                // This should be a map line (including empty/whitespace-only lines)
-                rawGridLines.push_back(line);
-                logDebug("MAPLOADER", "loadMapWithParams", "Added grid line: '" + line + "'");
-            }
-            else {
-                // We haven't found all headers yet. 
-                // If we're past line 5 (assuming max 4 parameter lines after map name), 
-                // or if this line doesn't look like a parameter line, treat it as map data
-                bool looksLikeParameter = !line.empty() && 
-                                        (line.find("=") != std::string::npos) &&
-                                        (line.find("Rows") != std::string::npos ||
-                                         line.find("Cols") != std::string::npos ||
-                                         line.find("MaxSteps") != std::string::npos ||
-                                         line.find("NumShells") != std::string::npos);
-                
-                if (lineNumber > 5 || !looksLikeParameter) {
-                    // Treat as map data, even if headers are incomplete
-                    rawGridLines.push_back(line);
-                    logDebug("MAPLOADER", "loadMapWithParams", "Added grid line (headers incomplete): '" + line + "'");
-                }
-                else if (!line.empty()) {
-                    // This looks like it could be extra metadata
-                    std::string warnMsg = "Ignoring extra metadata line in " + path + ": " + line;
-                    logWarn("MAPLOADER", "loadMapWithParams", warnMsg);
-                    // mapLoadErrors_.push_back({path, warnMsg, currentTimestamp()});
-                }
-            }
+        if (!processMapLine(line, params, lineNumber, path)) {
+            break; // Start processing grid data
         }
     }
+    
+    // Continue reading grid data
+    while (std::getline(in, line)) {
+        cleanLine(line);
+        params.rawGridLines.push_back(line);
+    }
+    
+    return params;
+}
 
-    // Check for missing headers
+bool Simulator::processMapLine(const std::string& line, MapParameters& params, 
+                              int lineNumber, const std::string& path) const {
+    if (tryParseParameter(line, "Rows", params.rows, params.foundRows, path) ||
+        tryParseParameter(line, "Cols", params.cols, params.foundCols, path) ||
+        tryParseParameter(line, "MaxSteps", params.maxSteps, params.foundMaxSteps, path) ||
+        tryParseParameter(line, "NumShells", params.numShells, params.foundNumShells, path)) {
+        return true;
+    }
+    
+    // Check if all headers found or past expected header lines
+    bool headersParsed = params.foundRows && params.foundCols && 
+                        params.foundMaxSteps && params.foundNumShells;
+    
+    if (headersParsed || lineNumber > 5 || !looksLikeParameter(line)) {
+        params.rawGridLines.push_back(line);
+        return false; // Start grid processing
+    }
+    
+    if (!line.empty()) {
+        logWarn("MAPLOADER", "loadMapWithParams", 
+               "Ignoring extra metadata line in " + path + ": " + line);
+    }
+    return true;
+}
+
+bool Simulator::tryParseParameter(const std::string& line, const std::string& paramName,
+                                 size_t& value, bool& found, const std::string& path) const {
+    if (line.find(paramName) != std::string::npos && line.find("=") != std::string::npos) {
+        if (parseParameter(line, paramName, value, path)) {
+            found = true;
+            logDebug("MAPLOADER", "loadMapWithParams", 
+                    "Parsed " + paramName + " = " + std::to_string(value));
+        }
+        return true;
+    }
+    return false;
+}
+
+bool Simulator::looksLikeParameter(const std::string& line) const {
+    return !line.empty() && line.find("=") != std::string::npos &&
+           (line.find("Rows") != std::string::npos ||
+            line.find("Cols") != std::string::npos ||
+            line.find("MaxSteps") != std::string::npos ||
+            line.find("NumShells") != std::string::npos);
+}
+
+void Simulator::validateMapParameters(const MapParameters& params, const std::string& path) const {
+    checkRequiredHeaders(params, path);
+    validateDimensions(params, path);
+    checkDimensionMismatches(params, path);
+}
+
+void Simulator::checkRequiredHeaders(const MapParameters& params, const std::string& path) const {
     std::vector<std::string> missingHeaders;
-    if (!foundRows) missingHeaders.push_back("Rows");
-    if (!foundCols) missingHeaders.push_back("Cols");
-    if (!foundMaxSteps) missingHeaders.push_back("MaxSteps");
-    if (!foundNumShells) missingHeaders.push_back("NumShells");
+    if (!params.foundRows) missingHeaders.push_back("Rows");
+    if (!params.foundCols) missingHeaders.push_back("Cols");
+    if (!params.foundMaxSteps) missingHeaders.push_back("MaxSteps");
+    if (!params.foundNumShells) missingHeaders.push_back("NumShells");
     
     if (!missingHeaders.empty()) {
         std::string errorMsg = "Missing required headers in " + path + ": ";
@@ -456,68 +407,25 @@ MapData Simulator::loadMapWithParams(const std::string& path) const {
             errorMsg += missingHeaders[i];
             if (i + 1 < missingHeaders.size()) errorMsg += ", ";
         }
-        // mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
         ErrorLogger::instance().log(errorMsg);
         throw std::runtime_error(errorMsg);
     }
-
-    // Validate dimensions
-    if (rows == 0 || cols == 0) {
-        std::string errorMsg = "Invalid dimensions in " + path + 
-                              ": rows=" + std::to_string(rows) + 
-                              ", cols=" + std::to_string(cols);
-        // mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-        ErrorLogger::instance().log(errorMsg);
-        throw std::runtime_error(errorMsg);
-    }
-
-    // Handle dimension mismatches gracefully - log but don't throw
-    if (rawGridLines.size() != rows) {
-        std::string errorMsg = "Map dimension mismatch in " + path + 
-                              ": expected " + std::to_string(rows) + 
-                              " rows, found " + std::to_string(rawGridLines.size()) + 
-                              " (will be adjusted automatically)";
-        // mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-        logWarn("MAPLOADER", "loadMapWithParams", errorMsg);
-    }
-
-    // ADD THIS: Check for column dimension mismatches
-size_t maxColsFound = 0;
-for (const auto& line : rawGridLines) {
-    maxColsFound = std::max(maxColsFound, line.size());
 }
 
-if (maxColsFound != cols) {
-    std::string errorMsg = "Map dimension mismatch in " + path + 
-                          ": expected " + std::to_string(cols) + 
-                          " cols, found max " + std::to_string(maxColsFound) + 
-                          " (will be adjusted automatically)";
-    logWarn("MAPLOADER", "loadMapWithParams", errorMsg);
-}
-
+std::vector<std::string> Simulator::createNormalizedGrid(const MapParameters& params) const {
     logDebug("MAPLOADER", "loadMapWithParams", 
-        "Parsed map parameters - rows=" + std::to_string(rows) + 
-        ", cols=" + std::to_string(cols) + 
-        ", maxSteps=" + std::to_string(maxSteps) + 
-        ", numShells=" + std::to_string(numShells));
+            "Parsed map parameters - rows=" + std::to_string(params.rows) + 
+            ", cols=" + std::to_string(params.cols) + 
+            ", maxSteps=" + std::to_string(params.maxSteps) + 
+            ", numShells=" + std::to_string(params.numShells));
 
-    // Clean and normalize the grid to match header dimensions
-    auto normalizedGrid = cleanAndNormalizeGrid(rawGridLines, rows, cols, path);
+    return cleanAndNormalizeGrid(params.rawGridLines, params.rows, params.cols, params.path);
 
-    if (config_.debug) {
-        logDebug("MAPLOADER", "loadMapWithParams", "Normalized grid:");
-        for (size_t r = 0; r < normalizedGrid.size(); ++r) {
-            std::string debugStr = "Row " + std::to_string(r) + ": '";
-            for (char c : normalizedGrid[r]) {
-                if (c == ' ') debugStr += "_";  // Show spaces as underscores for clarity
-                else debugStr += c;
-            }
-            debugStr += "'";
-            logDebug("MAPLOADER", "loadMapWithParams", debugStr);
-        }
-    }
+    // return cleanAndNormalizeGrid(params.rawGridLines, params.rows, params.cols, "");
+}
 
-    // Build MapData and return (keeping your existing MapView creation)
+MapData Simulator::buildMapData(const MapParameters& params, 
+                               std::vector<std::string>&& normalizedGrid) const {
     class MapView : public SatelliteView {
     public:
         MapView(std::vector<std::string>&& rows)
@@ -535,314 +443,71 @@ if (maxColsFound != cols) {
     };
 
     MapData md;
-    md.rows = rows;
-    md.cols = cols;
-    md.maxSteps = maxSteps;
-    md.numShells = numShells;
+    md.rows = params.rows;
+    md.cols = params.cols;
+    md.maxSteps = params.maxSteps;
+    md.numShells = params.numShells;
     md.view = std::make_unique<MapView>(std::move(normalizedGrid));
     
     logDebug("MAPLOADER", "loadMapWithParams", "Map loaded successfully");
     return md;
 }
 
+// Missing helper function implementations
 
+void Simulator::cleanLine(std::string& line) const {
+    // Remove carriage return if present
+    if (!line.empty() && line.back() == '\r') {
+        line.pop_back();
+    }
+}
 
-// // Map loading with enhanced error handling and flexibility
-// MapData Simulator::loadMapWithParams(const std::string& path) const {
-//     logDebug("MAPLOADER", "loadMapWithParams", "Loading map from: " + path);
+void Simulator::validateDimensions(const MapParameters& params, const std::string& path) const {
+    if (params.rows == 0 || params.cols == 0) {
+        std::string errorMsg = "Invalid dimensions in " + path + 
+                              ": rows=" + std::to_string(params.rows) + 
+                              ", cols=" + std::to_string(params.cols);
+        ErrorLogger::instance().log(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+}
+
+void Simulator::checkDimensionMismatches(const MapParameters& params, const std::string& path) const {
+    // Check row dimension mismatches
+    if (params.rawGridLines.size() != params.rows) {
+        std::string errorMsg = "Map dimension mismatch in " + path + 
+                              ": expected " + std::to_string(params.rows) + 
+                              " rows, found " + std::to_string(params.rawGridLines.size()) + 
+                              " (will be adjusted automatically)";
+        logWarn("MAPLOADER", "loadMapWithParams", errorMsg);
+    }
     
-//     std::ifstream in(path);
-//     if (!in.is_open()) {
-//         std::string errorMsg = "Failed to open map file: " + path;
-//         mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//         ErrorLogger::instance().log(errorMsg);
-//         throw std::runtime_error(errorMsg);
-//     }
-
-//     size_t rows = 0, cols = 0, maxSteps = 0, numShells = 0;
-//     std::vector<std::string> rawGridLines;
-//     std::string line;
-//     bool foundRows = false, foundCols = false, foundMaxSteps = false, foundNumShells = false;
-
-//     while (std::getline(in, line)) {
-//         if (!line.empty() && line.back() == '\r') line.pop_back();
-        
-//         if (line.rfind("Rows", 0) == 0) {
-//             auto eqPos = line.find('=');
-//             if (eqPos == std::string::npos) {
-//                 std::string errorMsg = "Invalid Rows format in " + path + ": " + line + " (missing '=' sign)";
-//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//                 ErrorLogger::instance().log(errorMsg);
-//                 throw std::runtime_error(errorMsg);
-//             }
-//             // Check for spaces around '=' sign
-//             if (eqPos > 4 && line[eqPos - 1] == ' ') {
-//                 std::string errorMsg = "Invalid Rows format in " + path + ": " + line + " (space before '=' sign)";
-//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//                 ErrorLogger::instance().log(errorMsg);
-//                 throw std::runtime_error(errorMsg);
-//             }
-//             if (eqPos + 1 < line.length() && line[eqPos + 1] == ' ') {
-//                 std::string errorMsg = "Invalid Rows format in " + path + ": " + line + " (space after '=' sign)";
-//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//                 ErrorLogger::instance().log(errorMsg);
-//                 throw std::runtime_error(errorMsg);
-//             }
-//             try {
-//                 rows = std::stoul(line.substr(eqPos + 1));
-//                 foundRows = true;
-//             } catch (const std::exception& e) {
-//                 std::string errorMsg = "Invalid Rows value in " + path + ": " + line;
-//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//                 ErrorLogger::instance().log(errorMsg);
-//                 throw std::runtime_error(errorMsg);
-//             }
-//         } else if (line.rfind("Cols", 0) == 0) {
-//             auto eqPos = line.find('=');
-//             if (eqPos == std::string::npos) {
-//                 std::string errorMsg = "Invalid Cols format in " + path + ": " + line + " (missing '=' sign)";
-//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//                 ErrorLogger::instance().log(errorMsg);
-//                 throw std::runtime_error(errorMsg);
-//             }
-//             // Check for spaces around '=' sign
-//             if (eqPos > 4 && line[eqPos - 1] == ' ') {
-//                 std::string errorMsg = "Invalid Cols format in " + path + ": " + line + " (space before '=' sign)";
-//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//                 ErrorLogger::instance().log(errorMsg);
-//                 throw std::runtime_error(errorMsg);
-//             }
-//             if (eqPos + 1 < line.length() && line[eqPos + 1] == ' ') {
-//                 std::string errorMsg = "Invalid Cols format in " + path + ": " + line + " (space after '=' sign)";
-//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//                 ErrorLogger::instance().log(errorMsg);
-//                 throw std::runtime_error(errorMsg);
-//             }
-//             try {
-//                 cols = std::stoul(line.substr(eqPos + 1));
-//                 foundCols = true;
-//             } catch (const std::exception& e) {
-//                 std::string errorMsg = "Invalid Cols value in " + path + ": " + line;
-//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//                 ErrorLogger::instance().log(errorMsg);
-//                 throw std::runtime_error(errorMsg);
-//             }
-//         } else if (line.rfind("MaxSteps", 0) == 0) {
-//             auto eqPos = line.find('=');
-//             if (eqPos == std::string::npos) {
-//                 std::string errorMsg = "Invalid MaxSteps format in " + path + ": " + line + " (missing '=' sign)";
-//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//                 ErrorLogger::instance().log(errorMsg);
-//                 throw std::runtime_error(errorMsg);
-//             }
-//             // Check for spaces around '=' sign
-//             if (eqPos > 8 && line[eqPos - 1] == ' ') {
-//                 std::string errorMsg = "Invalid MaxSteps format in " + path + ": " + line + " (space before '=' sign)";
-//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//                 ErrorLogger::instance().log(errorMsg);
-//                 throw std::runtime_error(errorMsg);
-//             }
-//             if (eqPos + 1 < line.length() && line[eqPos + 1] == ' ') {
-//                 std::string errorMsg = "Invalid MaxSteps format in " + path + ": " + line + " (space after '=' sign)";
-//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//                 ErrorLogger::instance().log(errorMsg);
-//                 throw std::runtime_error(errorMsg);
-//             }
-//             try {
-//                 maxSteps = std::stoul(line.substr(eqPos + 1));
-//                 foundMaxSteps = true;
-//             } catch (const std::exception& e) {
-//                 std::string errorMsg = "Invalid MaxSteps value in " + path + ": " + line;
-//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//                 ErrorLogger::instance().log(errorMsg);
-//                 throw std::runtime_error(errorMsg);
-//             }
-//         } else if (line.rfind("NumShells", 0) == 0) {
-//             auto eqPos = line.find('=');
-//             if (eqPos == std::string::npos) {
-//                 std::string errorMsg = "Invalid NumShells format in " + path + ": " + line + " (missing '=' sign)";
-//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//                 ErrorLogger::instance().log(errorMsg);
-//                 throw std::runtime_error(errorMsg);
-//             }
-//             // Check for spaces around '=' sign
-//             if (eqPos > 9 && line[eqPos - 1] == ' ') {
-//                 std::string errorMsg = "Invalid NumShells format in " + path + ": " + line + " (space before '=' sign)";
-//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//                 ErrorLogger::instance().log(errorMsg);
-//                 throw std::runtime_error(errorMsg);
-//             }
-//             if (eqPos + 1 < line.length() && line[eqPos + 1] == ' ') {
-//                 std::string errorMsg = "Invalid NumShells format in " + path + ": " + line + " (space after '=' sign)";
-//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//                 ErrorLogger::instance().log(errorMsg);
-//                 throw std::runtime_error(errorMsg);
-//             }
-//             try {
-//                 numShells = std::stoul(line.substr(eqPos + 1));
-//                 foundNumShells = true;
-//             } catch (const std::exception& e) {
-//                 std::string errorMsg = "Invalid NumShells value in " + path + ": " + line;
-//                 mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//                 ErrorLogger::instance().log(errorMsg);
-//                 throw std::runtime_error(errorMsg);
-//             }
-//         } else {
-//             if (!line.empty()) {
-//                 // Check if this looks like a grid line (contains game characters)
-//                 bool looksLikeGrid = false;
-//                 for (char c : line) {
-//                     if (c == '.' || c == '#' || c == '@' || c == '1' || c == '2' || c == ' ') {
-//                         looksLikeGrid = true;
-//                         break;
-//                     }
-//                 }
-//                 if (looksLikeGrid) {
-//                     rawGridLines.push_back(line);
-//                     logDebug("MAPLOADER", "loadMapWithParams", "Added grid line: '" + line + "'");
-//                 } else {
-//                     logDebug("MAPLOADER", "loadMapWithParams", "Ignoring non-grid line: '" + line + "'");
-//                 }
-//             }
-//         }
-//     }
-
-//     // Check for missing headers
-//     std::vector<std::string> missingHeaders;
-//     if (!foundRows) missingHeaders.push_back("Rows");
-//     if (!foundCols) missingHeaders.push_back("Cols");
-//     if (!foundMaxSteps) missingHeaders.push_back("MaxSteps");
-//     if (!foundNumShells) missingHeaders.push_back("NumShells");
+    // Check column dimension mismatches
+    size_t maxColsFound = 0;
+    for (const auto& line : params.rawGridLines) {
+        maxColsFound = std::max(maxColsFound, line.size());
+    }
     
-//     if (!missingHeaders.empty()) {
-//         std::string errorMsg = "Missing required headers in " + path + ": ";
-//         for (size_t i = 0; i < missingHeaders.size(); ++i) {
-//             errorMsg += missingHeaders[i];
-//             if (i + 1 < missingHeaders.size()) errorMsg += ", ";
-//         }
-//         mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//         ErrorLogger::instance().log(errorMsg);
-//         throw std::runtime_error(errorMsg);
-//     }
+    if (maxColsFound != params.cols) {
+        std::string errorMsg = "Map dimension mismatch in " + path + 
+                              ": expected " + std::to_string(params.cols) + 
+                              " cols, found max " + std::to_string(maxColsFound) + 
+                              " (will be adjusted automatically)";
+        logWarn("MAPLOADER", "loadMapWithParams", errorMsg);
+    }
+}
 
-//     // Validate dimensions
-//     if (rows == 0 || cols == 0) {
-//         std::string errorMsg = "Invalid dimensions in " + path + 
-//                               ": rows=" + std::to_string(rows) + 
-//                               ", cols=" + std::to_string(cols);
-//         mapLoadErrors_.push_back({path, errorMsg, currentTimestamp()});
-//         ErrorLogger::instance().log(errorMsg);
-//         throw std::runtime_error(errorMsg);
-//     }
-
-//     logDebug("MAPLOADER", "loadMapWithParams", 
-//         "Parsed map parameters - rows=" + std::to_string(rows) + 
-//         ", cols=" + std::to_string(cols) + 
-//         ", maxSteps=" + std::to_string(maxSteps) + 
-//         ", numShells=" + std::to_string(numShells));
-
-//     // Normalize the grid to match header dimensions
-//     auto normalizedGrid = normalizeGrid(rawGridLines, rows, cols);
-
-//     if (config_.debug) {
-//         logDebug("MAPLOADER", "loadMapWithParams", "Normalized grid:");
-//         for (size_t r = 0; r < normalizedGrid.size(); ++r) {
-//             std::string debugStr = "Row " + std::to_string(r) + ": '";
-//             for (char c : normalizedGrid[r]) {
-//                 if (c == ' ') debugStr += "_";  // Show spaces as underscores for clarity
-//                 else debugStr += c;
-//             }
-//             debugStr += "'";
-//             logDebug("MAPLOADER", "loadMapWithParams", debugStr);
-//         }
-//     }
-
-//     // Build SatelliteView
-//     class MapView : public SatelliteView {
-//     public:
-//         MapView(std::vector<std::string>&& rows)
-//             : rows_(std::move(rows)),
-//               width_(rows_.empty() ? 0 : rows_[0].size()),
-//               height_(rows_.size()) {}
-//         char getObjectAt(size_t x, size_t y) const override {
-//             return (y < height_ && x < width_) ? rows_[y][x] : ' ';
-//         }
-//         size_t width() const { return width_; }
-//         size_t height() const { return height_; }
-//     private:
-//         std::vector<std::string> rows_;
-//         size_t width_, height_;
-//     };
-
-//     MapData md;
-//     md.rows = rows;
-//     md.cols = cols;
-//     md.maxSteps = maxSteps;
-//     md.numShells = numShells;
-//     md.view = std::make_unique<MapView>(std::move(normalizedGrid));
-    
-//     logDebug("MAPLOADER", "loadMapWithParams", "Map loaded successfully");
-//     return md;
-// }
-
-// Grid normalization to handle flexible dimensions
-// std::vector<std::string> Simulator::normalizeGrid(const std::vector<std::string>& rawGrid, 
-//                                                   size_t targetRows, size_t targetCols) const {
-//     std::vector<std::string> normalized;
-//     normalized.reserve(targetRows);
-    
-//     logDebug("MAPLOADER", "normalizeGrid", 
-//         "Normalizing grid from " + std::to_string(rawGrid.size()) + " rows to " + 
-//         std::to_string(targetRows) + " rows, " + std::to_string(targetCols) + " cols");
-
-//     for (size_t row = 0; row < targetRows; ++row) {
-//         std::string normalizedRow;
-//         normalizedRow.reserve(targetCols);
-        
-//         if (row < rawGrid.size()) {
-//             // Process existing row
-//             const std::string& sourceRow = rawGrid[row];
-            
-//             for (size_t col = 0; col < targetCols; ++col) {
-//                 if (col < sourceRow.size()) {
-//                     // Normalize the character
-//                     normalizedRow += normalizeCell(sourceRow[col]);
-//                 } else {
-//                     // Fill missing columns with spaces
-//                     normalizedRow += ' ';
-//                 }
-//             }
-            
-//             // Log if we truncated columns
-//             if (sourceRow.size() > targetCols) {
-//                 logDebug("MAPLOADER", "normalizeGrid", 
-//                     "Row " + std::to_string(row) + " truncated from " + 
-//                     std::to_string(sourceRow.size()) + " to " + std::to_string(targetCols) + " cols");
-//             }
-//             // Log if we padded columns
-//             else if (sourceRow.size() < targetCols) {
-//                 logDebug("MAPLOADER", "normalizeGrid", 
-//                     "Row " + std::to_string(row) + " padded from " + 
-//                     std::to_string(sourceRow.size()) + " to " + std::to_string(targetCols) + " cols");
-//             }
-//         } else {
-//             // Fill missing rows with spaces
-//             normalizedRow = std::string(targetCols, ' ');
-//             logDebug("MAPLOADER", "normalizeGrid", 
-//                 "Row " + std::to_string(row) + " created as empty (missing from source)");
-//         }
-        
-//         normalized.push_back(std::move(normalizedRow));
-//     }
-    
-//     // Log if we ignored extra rows
-//     if (rawGrid.size() > targetRows) {
-//         logDebug("MAPLOADER", "normalizeGrid", 
-//             "Ignored " + std::to_string(rawGrid.size() - targetRows) + " extra rows");
-//     }
-    
-//     return normalized;
-// }
+void Simulator::logNormalizedGrid(const std::vector<std::string>& normalizedGrid) const {
+    logDebug("MAPLOADER", "loadMapWithParams", "Normalized grid:");
+    for (size_t r = 0; r < normalizedGrid.size(); ++r) {
+        std::string debugStr = "Row " + std::to_string(r) + ": '";
+        for (char c : normalizedGrid[r]) {
+            debugStr += (c == ' ') ? '_' : c;  // Show spaces as underscores for clarity
+        }
+        debugStr += "'";
+        logDebug("MAPLOADER", "loadMapWithParams", debugStr);
+    }
+}
 
 // Character normalization - only keep valid game objects
 char Simulator::normalizeCell(char c) const {
@@ -860,52 +525,6 @@ char Simulator::normalizeCell(char c) const {
             return ' ';  // Empty cell (includes original '.' and any other chars)
     }
 }
-
-// // Write map loading errors to file
-// void Simulator::writeMapErrors() const {
-//     if (mapLoadErrors_.empty()) {
-//         return; // No errors to write
-//     }
-    
-//     auto ts = currentTimestamp();
-//     std::string errorFileName = "input_errors_" + ts + ".txt";
-    
-//     std::ofstream errFile(errorFileName);
-//     if (!errFile.is_open()) {
-//         std::string warnMsg = "Cannot create map errors file: " + errorFileName + ", printing to stderr";
-//         logWarn("FILEWRITER", "writeMapErrors", warnMsg);
-//         ErrorLogger::instance().log(warnMsg);
-        
-//         // Fallback to stderr
-//         std::cerr << "\n=== MAP LOADING ERRORS ===\n";
-//         for (const auto& error : mapLoadErrors_) {
-//             std::string errorLine = "Map: " + error.mapPath + " Time: " + error.timestamp + " Error: " + error.errorReason;
-//             std::cerr << errorLine << "\n";
-//             // LOG_ERROR(errorLine);
-//             ErrorLogger::instance().log(errorLine);
-
-//         }
-//         return;
-//     }
-    
-//     logInfo("FILEWRITER", "writeMapErrors", 
-//         "Writing " + std::to_string(mapLoadErrors_.size()) + 
-//         " map errors to: " + errorFileName);
-    
-//     errFile << "=== MAP LOADING ERRORS ===\n";
-//     errFile << "Generated: " << ts << "\n\n";
-    
-//     for (const auto& error : mapLoadErrors_) {
-//         errFile << "Map: " << error.mapPath << "\n";
-//         errFile << "Time: " << error.timestamp << "\n";
-//         errFile << "Error: " << error.errorReason << "\n";
-//         errFile << "----------------------------------------\n\n";
-//     }
-    
-//     errFile.close();
-//     logInfo("FILEWRITER", "writeMapErrors", "Map errors file written successfully");
-// }
-
 // Algorithm plugin loading - WITH TIMING PRESERVATION
 bool Simulator::loadAlgorithmPlugins() {
     // Add small delay to preserve timing that prevents segfault
@@ -915,134 +534,162 @@ bool Simulator::loadAlgorithmPlugins() {
         auto& algoReg = AlgorithmRegistrar::get();
         
         if (config_.modeComparative) {
-            logDebug("PLUGINLOADER", "loadAlgorithmPlugins", "Loading 2 algorithm plugins for comparative mode");
-            
-            std::vector<std::string> algPaths = {config_.algorithm1, config_.algorithm2};
-            
-            for (size_t i = 0; i < algPaths.size(); ++i) {
-                const auto& algPath = algPaths[i];
-                
-                // Check if file exists first
-                if (!std::filesystem::exists(algPath)) {
-                    std::string errorMsg = "Algorithm file does not exist: " + algPath;
-                    logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
-                    ErrorLogger::instance().log(errorMsg);
-                    return false;
-                }
-                
-                std::string name = stripSoExtension(algPath);
-                logDebug("PLUGINLOADER", "loadAlgorithmPlugins", "Loading algorithm: " + algPath);
-                
-                try {
-                    algoReg.createAlgorithmFactoryEntry(name);
-                } catch (const std::exception& e) {
-                    std::string errorMsg = "createAlgorithmFactoryEntry failed: " + std::string(e.what());
-                    logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
-                    ErrorLogger::instance().log(errorMsg);
-                    return false;
-                } catch (...) {
-                    std::string errorMsg = "createAlgorithmFactoryEntry failed with unknown exception";
-                    logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
-                    ErrorLogger::instance().log(errorMsg);
-                    return false;
-                }
-                
-                void* h = dlopen(algPath.c_str(), RTLD_NOW);
-                
-                if (!h) {
-                    const char* dlerr = dlerror();
-                    std::string errorMsg = "dlopen failed for algorithm '" + name + "': " + std::string(dlerr ? dlerr : "unknown");
-                    logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
-                    ErrorLogger::instance().log(errorMsg);
-                    
-                    // Clean up registry entry
-                    try {
-                        algoReg.removeLast();
-                    } catch (...) {
-                        logWarn("PLUGINLOADER", "loadAlgorithmPlugins", "Failed to remove last registry entry");
-                    }
-                    return false;
-                }
-                
-                try { 
-                    algoReg.validateLastRegistration();
-                } catch (const std::exception& e) {
-                    std::string errorMsg = "Registration validation failed for algorithm '" + name + "': " + e.what();
-                    logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
-                    ErrorLogger::instance().log(errorMsg);
-                    algoReg.removeLast();
-                    dlclose(h);
-                    return false;
-                } catch (...) {
-                    std::string errorMsg = "Registration validation failed for algorithm '" + name + "'";
-                    logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
-                    ErrorLogger::instance().log(errorMsg);
-                    algoReg.removeLast();
-                    dlclose(h);
-                    return false;
-                }
-                
-                logDebug("PLUGINLOADER", "loadAlgorithmPlugins", 
-                    "Algorithm '" + name + "' loaded and validated successfully");
-                algorithmHandles_.push_back(h);
-                validAlgorithmPaths_.push_back(algPath);
-                loadedAlgorithms_++;
-            }
-            
-            return true;
+            return loadComparativeAlgorithms(algoReg);
         } else {
-            // Competition mode - load all algorithms from folder
-            logDebug("PLUGINLOADER", "loadAlgorithmPlugins", 
-                "Loading algorithm plugins from '" + config_.algorithms_folder + "'");
-            
-            for (auto& e : fs::directory_iterator(config_.algorithms_folder)) {
-                if (e.path().extension() == ".so") {
-                    std::string path = e.path().string();
-                    std::string name = stripSoExtension(path);
-                    
-                    logDebug("PLUGINLOADER", "loadAlgorithmPlugins", "Loading algorithm: " + path);
-                    algoReg.createAlgorithmFactoryEntry(name);
-                    void* h = dlopen(path.c_str(), RTLD_NOW);
-                    if (!h) {
-                        std::string warnMsg = "dlopen failed for algorithm '" + path + "': " + std::string(dlerror());
-                        logWarn("PLUGINLOADER", "loadAlgorithmPlugins", warnMsg);
-                        ErrorLogger::instance().log(warnMsg);
-                        algoReg.removeLast();
-                        continue;
-                    }
-                    try { 
-                        algoReg.validateLastRegistration(); 
-                    } catch (...) {
-                        std::string warnMsg = "Registration validation failed for algorithm '" + path + "'";
-                        logWarn("PLUGINLOADER", "loadAlgorithmPlugins", warnMsg);
-                        ErrorLogger::instance().log(warnMsg);
-                        algoReg.removeLast();
-                        dlclose(h);
-                        continue;
-                    }
-                    logDebug("PLUGINLOADER", "loadAlgorithmPlugins", 
-                        "Algorithm '" + name + "' loaded and validated successfully");
-                    algorithmHandles_.push_back(h);
-                    validAlgorithmPaths_.push_back(path);
-                    loadedAlgorithms_++;
-                }
-            }
-            return loadedAlgorithms_ >= 2;
+            return loadCompetitionAlgorithms(algoReg);
         }
         
     } catch (const std::exception& e) {
-        std::string errorMsg = "Exception: " + std::string(e.what());
-        logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
-        ErrorLogger::instance().log(errorMsg);
+        logError("PLUGINLOADER", "loadAlgorithmPlugins", "Exception: " + std::string(e.what()));
+        ErrorLogger::instance().log("Exception: " + std::string(e.what()));
         return false;
     } catch (...) {
-        std::string errorMsg = "Unknown exception";
-        logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
-        ErrorLogger::instance().log(errorMsg);
+        logError("PLUGINLOADER", "loadAlgorithmPlugins", "Unknown exception");
+        ErrorLogger::instance().log("Unknown exception");
         return false;
     }
 }
 
+bool Simulator::loadComparativeAlgorithms(AlgorithmRegistrar& algoReg) {
+    logDebug("PLUGINLOADER", "loadAlgorithmPlugins", "Loading 2 algorithm plugins for comparative mode");
+    
+    std::vector<std::string> algPaths = {config_.algorithm1, config_.algorithm2};
+    
+    for (const auto& algPath : algPaths) {
+        if (!loadSingleAlgorithm(algoReg, algPath, true)) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+bool Simulator::loadCompetitionAlgorithms(AlgorithmRegistrar& algoReg) {
+    logDebug("PLUGINLOADER", "loadAlgorithmPlugins", 
+            "Loading algorithm plugins from '" + config_.algorithms_folder + "'");
+    
+    for (auto& e : fs::directory_iterator(config_.algorithms_folder)) {
+        if (e.path().extension() == ".so") {
+            std::string path = e.path().string();
+            loadSingleAlgorithm(algoReg, path, false); // Don't fail on individual errors in competition mode
+        }
+    }
+    
+    return loadedAlgorithms_ >= 2;
+}
+
+bool Simulator::loadSingleAlgorithm(AlgorithmRegistrar& algoReg, const std::string& algPath, bool failOnError) {
+    if (failOnError && !validateAlgorithmFile(algPath)) {
+        return false;
+    }
+    
+    std::string name = stripSoExtension(algPath);
+    logDebug("PLUGINLOADER", "loadAlgorithmPlugins", "Loading algorithm: " + algPath);
+    
+    if (!createAlgorithmEntry(algoReg, name, failOnError)) {
+        return false;
+    }
+    
+    void* handle = loadAlgorithmLibrary(algPath, name, algoReg, failOnError);
+    if (!handle) {
+        return false;
+    }
+    
+    if (!validateAlgorithmRegistration(algoReg, name, handle, failOnError)) {
+        return false;
+    }
+    
+    finalizeAlgorithmLoad(handle, algPath, name);
+    return true;
+}
+
+bool Simulator::validateAlgorithmFile(const std::string& algPath) {
+    if (!std::filesystem::exists(algPath)) {
+        std::string errorMsg = "Algorithm file does not exist: " + algPath;
+        logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
+        ErrorLogger::instance().log(errorMsg);
+        return false;
+    }
+    return true;
+}
+
+bool Simulator::createAlgorithmEntry(AlgorithmRegistrar& algoReg, const std::string& name, bool failOnError) {
+    try {
+        algoReg.createAlgorithmFactoryEntry(name);
+        return true;
+    } catch (const std::exception& e) {
+        std::string errorMsg = "createAlgorithmFactoryEntry failed: " + std::string(e.what());
+        logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
+        ErrorLogger::instance().log(errorMsg);
+        return !failOnError;
+    } catch (...) {
+        std::string errorMsg = "createAlgorithmFactoryEntry failed with unknown exception";
+        logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
+        ErrorLogger::instance().log(errorMsg);
+        return !failOnError;
+    }
+}
+
+void* Simulator::loadAlgorithmLibrary(const std::string& algPath, const std::string& name, 
+                                     AlgorithmRegistrar& algoReg, bool failOnError) {
+    void* handle = dlopen(algPath.c_str(), RTLD_NOW);
+    
+    if (!handle) {
+        const char* dlerr = dlerror();
+        std::string errorMsg = "dlopen failed for algorithm '" + name + "': " + std::string(dlerr ? dlerr : "unknown");
+        
+        if (failOnError) {
+            logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
+        } else {
+            logWarn("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
+        }
+        ErrorLogger::instance().log(errorMsg);
+        
+        try {
+            algoReg.removeLast();
+        } catch (...) {
+            logWarn("PLUGINLOADER", "loadAlgorithmPlugins", "Failed to remove last registry entry");
+        }
+    }
+    
+    return handle;
+}
+
+bool Simulator::validateAlgorithmRegistration(AlgorithmRegistrar& algoReg, const std::string& name, 
+                                             void* handle, bool failOnError) {
+    try { 
+        algoReg.validateLastRegistration();
+        return true;
+    } catch (const std::exception& e) {
+        std::string errorMsg = "Registration validation failed for algorithm '" + name + "': " + e.what();
+        handleValidationError(errorMsg, algoReg, handle, failOnError);
+        return false;
+    } catch (...) {
+        std::string errorMsg = "Registration validation failed for algorithm '" + name + "'";
+        handleValidationError(errorMsg, algoReg, handle, failOnError);
+        return false;
+    }
+}
+
+void Simulator::handleValidationError(const std::string& errorMsg, AlgorithmRegistrar& algoReg, 
+                                     void* handle, bool failOnError) {
+    if (failOnError) {
+        logError("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
+    } else {
+        logWarn("PLUGINLOADER", "loadAlgorithmPlugins", errorMsg);
+    }
+    ErrorLogger::instance().log(errorMsg);
+    algoReg.removeLast();
+    dlclose(handle);
+}
+
+void Simulator::finalizeAlgorithmLoad(void* handle, const std::string& algPath, const std::string& name) {
+    logDebug("PLUGINLOADER", "loadAlgorithmPlugins", 
+            "Algorithm '" + name + "' loaded and validated successfully");
+    algorithmHandles_.push_back(handle);
+    validAlgorithmPaths_.push_back(algPath);
+    loadedAlgorithms_++;
+}
 // GameManager plugin loading
 bool Simulator::loadGameManagerPlugins() {
     auto& gmReg = GameManagerRegistrar::get();
@@ -1050,42 +697,82 @@ bool Simulator::loadGameManagerPlugins() {
     logDebug("PLUGINLOADER", "loadGameManagerPlugins", 
         "Loading GameManager plugins from '" + config_.game_managers_folder + "'");
     
+    loadGameManagersFromDirectory(gmReg);
+    return loadedGameManagers_ > 0;
+}
+
+void Simulator::loadGameManagersFromDirectory(GameManagerRegistrar& gmReg) {
     for (auto& e : fs::directory_iterator(config_.game_managers_folder)) {
         if (e.path().extension() == ".so") {
             std::string path = e.path().string();
-            std::string name = stripSoExtension(path);
-            
-            logDebug("PLUGINLOADER", "loadGameManagerPlugins", "Loading GameManager: " + path);
-            gmReg.createGameManagerEntry(name);
-            void* h = dlopen(path.c_str(), RTLD_NOW);
-            if (!h) {
-                std::string warnMsg = "dlopen failed for GameManager '" + name + "': " + std::string(dlerror());
-                logWarn("PLUGINLOADER", "loadGameManagerPlugins", warnMsg);
-                ErrorLogger::instance().log(warnMsg);
-                gmReg.removeLast();
-                continue;
-            }
-            
-            try { 
-                gmReg.validateLastRegistration(); 
-            } catch (...) {
-                std::string warnMsg = "Registration validation failed for GameManager '" + name + "'";
-                logWarn("PLUGINLOADER", "loadGameManagerPlugins", warnMsg);
-                ErrorLogger::instance().log(warnMsg);
-                gmReg.removeLast();
-                dlclose(h);
-                continue;
-            }
-            
-            logDebug("PLUGINLOADER", "loadGameManagerPlugins", 
-                "GameManager '" + name + "' loaded and validated successfully");
-            gameManagerHandles_.push_back(h);
-            validGameManagerPaths_.push_back(path);
-            loadedGameManagers_++;
+            loadSingleGameManager(gmReg, path);
         }
     }
+}
+
+void Simulator::loadSingleGameManager(GameManagerRegistrar& gmReg, const std::string& path) {
+    std::string name = stripSoExtension(path);
     
-    return loadedGameManagers_ > 0;
+    logDebug("PLUGINLOADER", "loadGameManagerPlugins", "Loading GameManager: " + path);
+    
+    if (!createGameManagerEntry(gmReg, name)) {
+        return;
+    }
+    
+    void* handle = loadGameManagerLibrary(gmReg, path, name);
+    if (!handle) {
+        return;
+    }
+    
+    if (!validateGameManagerRegistration(gmReg, handle, name)) {
+        return;
+    }
+    
+    finalizeGameManagerLoad(handle, path, name);
+}
+
+bool Simulator::createGameManagerEntry(GameManagerRegistrar& gmReg, const std::string& name) {
+    try {
+        gmReg.createGameManagerEntry(name);
+        return true;
+    } catch (...) {
+        logWarn("PLUGINLOADER", "loadGameManagerPlugins", 
+               "Failed to create GameManager entry for: " + name);
+        return false;
+    }
+}
+
+void* Simulator::loadGameManagerLibrary(GameManagerRegistrar& gmReg, const std::string& path, 
+                                       const std::string& name) {
+    void* handle = dlopen(path.c_str(), RTLD_NOW);
+    if (!handle) {
+        std::string warnMsg = "dlopen failed for GameManager '" + name + "': " + std::string(dlerror());
+        logWarn("PLUGINLOADER", "loadGameManagerPlugins", warnMsg);
+        gmReg.removeLast();
+    }
+    return handle;
+}
+
+bool Simulator::validateGameManagerRegistration(GameManagerRegistrar& gmReg, void* handle, 
+                                               const std::string& name) {
+    try { 
+        gmReg.validateLastRegistration(); 
+        return true;
+    } catch (...) {
+        std::string warnMsg = "Registration validation failed for GameManager '" + name + "'";
+        logWarn("PLUGINLOADER", "loadGameManagerPlugins", warnMsg);
+        gmReg.removeLast();
+        dlclose(handle);
+        return false;
+    }
+}
+
+void Simulator::finalizeGameManagerLoad(void* handle, const std::string& path, const std::string& name) {
+    logDebug("PLUGINLOADER", "loadGameManagerPlugins", 
+            "GameManager '" + name + "' loaded and validated successfully");
+    gameManagerHandles_.push_back(handle);
+    validGameManagerPaths_.push_back(path);
+    loadedGameManagers_++;
 }
 
 // Single GameManager loading for competition mode
@@ -1099,9 +786,7 @@ bool Simulator::loadSingleGameManager() {
     if (!gmH) {
         const char* dlerr = dlerror();
         std::string errorMsg = "dlopen failed for GameManager: " + std::string(dlerr ? dlerr : "unknown");
-        // LOG_ERROR_FMT("dlopen failed for GameManager %s: %s", config_.game_manager.c_str(), dlerr ? dlerr : "unknown");
         logError("PLUGINLOADER", "loadSingleGameManager", errorMsg);
-        ErrorLogger::instance().log(errorMsg);
         gmReg.removeLast();
         return false;
     }
@@ -1110,7 +795,6 @@ bool Simulator::loadSingleGameManager() {
     } catch (...) {
         std::string errorMsg = "GameManager registration validation failed for '" + gmName + "'";
         logError("PLUGINLOADER", "loadSingleGameManager", errorMsg);
-        ErrorLogger::instance().log(errorMsg);
         gmReg.removeLast();
         dlclose(gmH);
         return false;
@@ -1126,20 +810,28 @@ void Simulator::dispatchComparativeTasks() {
     logInfo("THREADPOOL", "dispatchComparativeTasks", 
         "Starting game execution with " + std::to_string(config_.numThreads) + " threads");
 
-    auto& gmReg = GameManagerRegistrar::get();
-    auto& algoReg = AlgorithmRegistrar::get();
+    MapData md = loadComparativeMap();
+    if (md.view == nullptr) return;
 
-    // Load map data
-    MapData md;
+    enqueueComparativeTasks(md);
+    finalizeTaskExecution();
+}
+
+MapData Simulator::loadComparativeMap() {
     try {
-        md = loadMapWithParams(config_.game_map);
+        return loadMapWithParams(config_.game_map);
     } catch (const std::exception& ex) {
         std::string errorMsg = "Error loading map: " + std::string(ex.what());
         logError("SIMULATOR", "dispatchComparativeTasks", errorMsg);
         ErrorLogger::instance().log(errorMsg);
-        return;
+        return MapData{}; // Return empty MapData
     }
+}
 
+void Simulator::enqueueComparativeTasks(const MapData& md) {
+    auto& gmReg = GameManagerRegistrar::get();
+    auto& algoReg = AlgorithmRegistrar::get();
+    
     SatelliteView& realMap = *md.view;
     const std::string mapFile = config_.game_map;
     const std::string algo1Name = stripSoExtension(config_.algorithm1);
@@ -1151,206 +843,186 @@ void Simulator::dispatchComparativeTasks() {
         auto& B = *(algoReg.begin() + 1);
 
         threadPool_->enqueue([this, &gmEntry, &A, &B, &md, &realMap, mapFile, algo1Name, algo2Name, gi] {
-            try {
-                auto gm = gmEntry.factory(config_.verbose);
-                auto p1 = A.createPlayer(0, md.rows, md.cols, md.maxSteps, md.numShells);
-                auto p2 = B.createPlayer(1, md.rows, md.cols, md.maxSteps, md.numShells);
-
-                GameResult gr = gm->run(
-                    md.cols, md.rows,
-                    realMap,
-                    mapFile,
-                    md.maxSteps, md.numShells,
-                    *p1, algo1Name,
-                    *p2, algo2Name,
-                    [&](int pi, int ti) { return A.createTankAlgorithm(pi, ti); },
-                    [&](int pi, int ti) { return B.createTankAlgorithm(pi, ti); }
-                );
-
-                std::ostringstream ss;
-                auto* state = gr.gameState.get();
-                for (size_t y = 0; y < md.rows; ++y) {
-                    for (size_t x = 0; x < md.cols; ++x) {
-                        ss << state->getObjectAt(x, y);
-                    }
-                    ss << '\n';
-                }
-
-                std::string finalMap = ss.str();
-                {
-                    std::lock_guard<std::mutex> lock(resultsMutex_);
-                    comparativeResults_.emplace_back(
-                        stripSoExtension(validGameManagerPaths_[gi]),
-                        std::move(gr),
-                        std::move(finalMap)
-                    );
-                    totalGamesPlayed_++;
-                }
-            } catch (const std::exception& ex) {
-                ErrorLogger::instance().logGameManagerError(mapFile, algo1Name, algo2Name, ex.what());
-            } catch (...) {
-                ErrorLogger::instance().logGameManagerError(mapFile, algo1Name, algo2Name, "Unknown error occurred.");
-            }
+            executeComparativeGame(gmEntry, A, B, md, realMap, mapFile, algo1Name, algo2Name, gi);
         });
     }
+}
 
-    logInfo("THREADPOOL", "dispatchComparativeTasks", "All tasks enqueued, waiting for completion");
-    threadPool_->shutdown();
-    threadPool_ = std::make_unique<ThreadPool>(config_.numThreads);
+void Simulator::executeComparativeGame(const auto& gmEntry, const auto& A, const auto& B,
+                                      const MapData& md, SatelliteView& realMap,
+                                      const std::string& mapFile, const std::string& algo1Name,
+                                      const std::string& algo2Name, size_t gi) {
+    try {
+        GameResult gr = runComparativeGame(gmEntry, A, B, md, realMap, mapFile, algo1Name, algo2Name);
+        std::string finalMap = buildFinalMapString(gr, md);
+        
+        std::lock_guard<std::mutex> lock(resultsMutex_);
+        comparativeResults_.emplace_back(
+            stripSoExtension(validGameManagerPaths_[gi]),
+            std::move(gr),
+            std::move(finalMap)
+        );
+        totalGamesPlayed_++;
+    } catch (const std::exception& ex) {
+        ErrorLogger::instance().logGameManagerError(mapFile, algo1Name, algo2Name, ex.what());
+    } catch (...) {
+        ErrorLogger::instance().logGameManagerError(mapFile, algo1Name, algo2Name, "Unknown error occurred.");
+    }
+}
+
+GameResult Simulator::runComparativeGame(const auto& gmEntry, const auto& A, const auto& B,
+                                        const MapData& md, SatelliteView& realMap,
+                                        const std::string& mapFile, const std::string& algo1Name,
+                                        const std::string& algo2Name) {
+    auto gm = gmEntry.factory(config_.verbose);
+    auto p1 = A.createPlayer(0, md.rows, md.cols, md.maxSteps, md.numShells);
+    auto p2 = B.createPlayer(1, md.rows, md.cols, md.maxSteps, md.numShells);
+
+    return gm->run(
+        md.cols, md.rows,
+        realMap,
+        mapFile,
+        md.maxSteps, md.numShells,
+        *p1, algo1Name,
+        *p2, algo2Name,
+        [&](int pi, int ti) { return A.createTankAlgorithm(pi, ti); },
+        [&](int pi, int ti) { return B.createTankAlgorithm(pi, ti); }
+    );
+}
+
+std::string Simulator::buildFinalMapString(const GameResult& gr, const MapData& md) {
+    std::ostringstream ss;
+    auto* state = gr.gameState.get();
+    for (size_t y = 0; y < md.rows; ++y) {
+        for (size_t x = 0; x < md.cols; ++x) {
+            ss << state->getObjectAt(x, y);
+        }
+        ss << '\n';
+    }
+    return ss.str();
 }
 
 void Simulator::dispatchCompetitionTasks() {
-    std::vector<std::string> allMapFiles;
+    CompetitionSetup setup = prepareCompetitionData();
+    if (setup.mapViews.empty()) return;
+
+    enqueueCompetitionTasks(setup);
+    finalizeTaskExecution();
+}
+
+CompetitionSetup Simulator::prepareCompetitionData() {
+    CompetitionSetup setup;
+    
+    // Collect all map files
     for (auto& e : fs::directory_iterator(config_.game_maps_folder)) {
         if (e.is_regular_file()) {
-            allMapFiles.push_back(e.path().string());
+            setup.allMapFiles.push_back(e.path().string());
         }
     }
 
-    std::vector<size_t> mapRows, mapCols, mapMaxSteps, mapNumShells;
-    std::vector<std::string> validMapFiles;
-    auto mapViews = preloadMapsAndTrackValid(allMapFiles, validMapFiles, mapRows, mapCols, mapMaxSteps, mapNumShells);
+    // Preload valid maps
+    setup.mapViews = preloadMapsAndTrackValid(setup.allMapFiles, setup.validMapFiles, 
+                                             setup.mapRows, setup.mapCols, 
+                                             setup.mapMaxSteps, setup.mapNumShells);
 
-    if (mapViews.empty()) {
-        std::string errorMsg = "No valid maps to run";
-        logError("SIMULATOR", "dispatchCompetitionTasks", errorMsg);
-        ErrorLogger::instance().log(errorMsg);
-        return;
+    if (setup.mapViews.empty()) {
+        logError("SIMULATOR", "dispatchCompetitionTasks", "No valid maps to run");
+        ErrorLogger::instance().log("No valid maps to run");
     }
+
+    return setup;
+}
+
+void Simulator::enqueueCompetitionTasks(const CompetitionSetup& setup) {
+    size_t totalGames = calculateTotalGames(setup.mapViews.size());
+    logInfo("THREADPOOL", "dispatchCompetitionTasks", 
+           "Starting execution of " + std::to_string(totalGames) + " total games with " + 
+           std::to_string(config_.numThreads) + " threads");
 
     auto& gmReg = GameManagerRegistrar::get();
     auto& algoReg = AlgorithmRegistrar::get();
     auto& gmEntry = *gmReg.begin();
 
-    size_t totalGames = 0;
-    for (size_t i = 0; i + 1 < loadedAlgorithms_; ++i)
-        for (size_t j = i + 1; j < loadedAlgorithms_; ++j)
-            totalGames += mapViews.size();
+    for (size_t mi = 0; mi < setup.mapViews.size(); ++mi) {
+        enqueueMapTasks(setup, mi, gmEntry, algoReg);
+    }
+}
 
-    logInfo("THREADPOOL", "dispatchCompetitionTasks", 
-        "Starting execution of " + std::to_string(totalGames) + " total games with " + 
-        std::to_string(config_.numThreads) + " threads");
+void Simulator::enqueueMapTasks(const CompetitionSetup& setup, size_t mi, 
+                               const auto& gmEntry, AlgorithmRegistrar& algoReg) {
+    SatelliteView& realMap = *setup.mapViews[mi];
+    size_t cols = setup.mapCols[mi], rows = setup.mapRows[mi];
+    size_t mSteps = setup.mapMaxSteps[mi], nShells = setup.mapNumShells[mi];
+    const std::string mapFile = setup.validMapFiles[mi];
 
-    for (size_t mi = 0; mi < mapViews.size(); ++mi) {
-        SatelliteView& realMap = *mapViews[mi];
-        size_t cols = mapCols[mi], rows = mapRows[mi];
-        size_t mSteps = mapMaxSteps[mi], nShells = mapNumShells[mi];
-        const std::string mapFile = validMapFiles[mi];
-
-        for (size_t i = 0; i + 1 < loadedAlgorithms_; ++i) {
-            for (size_t j = i + 1; j < loadedAlgorithms_; ++j) {
-                threadPool_->enqueue([this, &algoReg, &gmEntry, &realMap, cols, rows, mSteps, nShells, mapFile, i, j] {
-                    const std::string algo1Name = stripSoExtension(validAlgorithmPaths_[i]);
-                    const std::string algo2Name = stripSoExtension(validAlgorithmPaths_[j]);
-
-                    try {
-                        auto gm = gmEntry.factory(config_.verbose);
-                        auto& A = *(algoReg.begin() + i);
-                        auto& B = *(algoReg.begin() + j);
-                        auto p1 = A.createPlayer(0, rows, cols, mSteps, nShells);
-                        auto p2 = B.createPlayer(1, rows, cols, mSteps, nShells);
-
-                        GameResult gr = gm->run(
-                            cols, rows,
-                            realMap,
-                            mapFile,
-                            mSteps, nShells,
-                            *p1, algo1Name,
-                            *p2, algo2Name,
-                            [&](int pi, int ti) { return A.createTankAlgorithm(pi, ti); },
-                            [&](int pi, int ti) { return B.createTankAlgorithm(pi, ti); }
-                        );
-
-                        std::lock_guard<std::mutex> lock(resultsMutex_);
-                        competitionResults_.emplace_back(mapFile, algo1Name, algo2Name, std::move(gr));
-                        totalGamesPlayed_++;
-                    } catch (const std::exception& ex) {
-                        ErrorLogger::instance().logGameManagerError(mapFile, algo1Name, algo2Name, ex.what());
-                    } catch (...) {
-                        ErrorLogger::instance().logGameManagerError(mapFile, algo1Name, algo2Name, "Unknown error occurred.");
-                    }
-                });
-            }
+    for (size_t i = 0; i + 1 < loadedAlgorithms_; ++i) {
+        for (size_t j = i + 1; j < loadedAlgorithms_; ++j) {
+            threadPool_->enqueue([this, &algoReg, &gmEntry, &realMap, cols, rows, mSteps, nShells, mapFile, i, j] {
+                executeCompetitionGame(algoReg, gmEntry, realMap, cols, rows, mSteps, nShells, mapFile, i, j);
+            });
         }
     }
+}
 
-    logInfo("THREADPOOL", "dispatchCompetitionTasks", "All tasks enqueued, waiting for completion");
+void Simulator::executeCompetitionGame(AlgorithmRegistrar& algoReg, const auto& gmEntry,
+                                      SatelliteView& realMap, size_t cols, size_t rows,
+                                      size_t mSteps, size_t nShells, const std::string& mapFile,
+                                      size_t i, size_t j) {
+    const std::string algo1Name = stripSoExtension(validAlgorithmPaths_[i]);
+    const std::string algo2Name = stripSoExtension(validAlgorithmPaths_[j]);
+
+    try {
+        GameResult gr = runCompetitionGame(algoReg, gmEntry, realMap, cols, rows, 
+                                          mSteps, nShells, mapFile, algo1Name, algo2Name, i, j);
+        
+        std::lock_guard<std::mutex> lock(resultsMutex_);
+        competitionResults_.emplace_back(mapFile, algo1Name, algo2Name, std::move(gr));
+        totalGamesPlayed_++;
+    } catch (const std::exception& ex) {
+        ErrorLogger::instance().logGameManagerError(mapFile, algo1Name, algo2Name, ex.what());
+    } catch (...) {
+        ErrorLogger::instance().logGameManagerError(mapFile, algo1Name, algo2Name, "Unknown error occurred.");
+    }
+}
+
+GameResult Simulator::runCompetitionGame(AlgorithmRegistrar& algoReg, const auto& gmEntry,
+                                        SatelliteView& realMap, size_t cols, size_t rows,
+                                        size_t mSteps, size_t nShells, const std::string& mapFile,
+                                        const std::string& algo1Name, const std::string& algo2Name,
+                                        size_t i, size_t j) {
+    auto gm = gmEntry.factory(config_.verbose);
+    auto& A = *(algoReg.begin() + i);
+    auto& B = *(algoReg.begin() + j);
+    auto p1 = A.createPlayer(0, rows, cols, mSteps, nShells);
+    auto p2 = B.createPlayer(1, rows, cols, mSteps, nShells);
+
+    return gm->run(
+        cols, rows,
+        realMap,
+        mapFile,
+        mSteps, nShells,
+        *p1, algo1Name,
+        *p2, algo2Name,
+        [&](int pi, int ti) { return A.createTankAlgorithm(pi, ti); },
+        [&](int pi, int ti) { return B.createTankAlgorithm(pi, ti); }
+    );
+}
+
+size_t Simulator::calculateTotalGames(size_t numMaps) {
+    size_t totalGames = 0;
+    for (size_t i = 0; i + 1 < loadedAlgorithms_; ++i) {
+        for (size_t j = i + 1; j < loadedAlgorithms_; ++j) {
+            totalGames += numMaps;
+        }
+    }
+    return totalGames;
+}
+
+void Simulator::finalizeTaskExecution() {
+    logInfo("THREADPOOL", "dispatchComparativeTasks", "All tasks enqueued, waiting for completion");
     threadPool_->shutdown();
     threadPool_ = std::make_unique<ThreadPool>(config_.numThreads);
 }
-
-
-// Enhanced map preprocessing that tracks valid maps
-std::vector<std::shared_ptr<SatelliteView>> Simulator::preloadMapsAndTrackValid(
-    const std::vector<std::string>& mapFiles,
-    std::vector<std::string>& validMapFiles,
-    std::vector<size_t>& mapRows,
-    std::vector<size_t>& mapCols, 
-    std::vector<size_t>& mapMaxSteps,
-    std::vector<size_t>& mapNumShells) const {
-    
-    std::vector<std::shared_ptr<SatelliteView>> mapViews;
-    
-    logDebug("SIMULATOR", "preloadMapsAndTrackValid", "Preloading map data into shared structures");
-    
-    for (const auto& mapFile : mapFiles) {
-        try {
-            MapData md = loadMapWithParams(mapFile);
-            mapViews.emplace_back(std::move(md.view));
-            mapCols.push_back(md.cols);
-            mapRows.push_back(md.rows);
-            mapMaxSteps.push_back(md.maxSteps);
-            mapNumShells.push_back(md.numShells);
-            validMapFiles.push_back(mapFile); // Only add if successful
-            logDebug("MAPLOADER", "preloadMapsAndTrackValid", "Successfully preloaded map: " + mapFile);
-        } catch (const std::exception& ex) {
-            std::string warnMsg = "Skipping invalid map '" + mapFile + "': " + std::string(ex.what());
-            logWarn("MAPLOADER", "preloadMapsAndTrackValid", warnMsg);
-            ErrorLogger::instance().log(warnMsg);
-            // Error already recorded in mapLoadErrors_ by loadMapWithParams
-        }
-    }
-    
-    logInfo("SIMULATOR", "preloadMapsAndTrackValid", "Successfully preloaded " + std::to_string(mapViews.size()) + " valid map(s)");
-    
-    // Write errors at the end of preloading if any accumulated
-    // if (!mapLoadErrors_.empty()) {
-    //     writeMapErrors();
-    // }
-    
-    return mapViews;
-}
-
-// Map preprocessing for competition mode (legacy method, kept for comparative mode)
-std::vector<std::shared_ptr<SatelliteView>> Simulator::preloadMaps(
-    const std::vector<std::string>& mapFiles,
-    std::vector<size_t>& mapRows,
-    std::vector<size_t>& mapCols, 
-    std::vector<size_t>& mapMaxSteps,
-    std::vector<size_t>& mapNumShells) const {
-    
-    std::vector<std::string> validMapFiles; // Dummy - not used in this version
-    return preloadMapsAndTrackValid(mapFiles, validMapFiles, mapRows, mapCols, mapMaxSteps, mapNumShells);
-}
-
-// Outcome message formatting
-std::string Simulator::outcomeMessage(int winner, GameResult::Reason reason) const {
-    std::string msg;
-    if (winner == 0)           msg = "Tie: ";
-    else if (winner == 1)      msg = "Player 1 won: ";
-    else /* winner == 2 */     msg = "Player 2 won: ";
-
-    switch (reason) {
-      case GameResult::ALL_TANKS_DEAD:
-        msg += "all opponent tanks dead";   break;
-      case GameResult::MAX_STEPS:
-        msg += "max steps reached";         break;
-      case GameResult::ZERO_SHELLS:
-        msg += "no shells remaining";       break;
-    }
-    return msg;
-}
-
 // Comparative results file writing
 bool Simulator::writeComparativeFile(const std::vector<ComparativeEntry>& entries) const {
     logInfo("FILEWRITER", "writeComparativeFile", "Writing comparative results file");
@@ -1432,77 +1104,136 @@ bool Simulator::writeComparativeFile(const std::vector<ComparativeEntry>& entrie
     logInfo("FILEWRITER", "writeComparativeFile", "Comparative results file written successfully");
     return true;
 }
+// Outcome message formatting
+std::string Simulator::outcomeMessage(int winner, GameResult::Reason reason) const {
+    std::string msg;
+    if (winner == 0)           msg = "Tie: ";
+    else if (winner == 1)      msg = "Player 1 won: ";
+    else /* winner == 2 */     msg = "Player 2 won: ";
+
+    switch (reason) {
+      case GameResult::ALL_TANKS_DEAD:
+        msg += "all opponent tanks dead";   break;
+      case GameResult::MAX_STEPS:
+        msg += "max steps reached";         break;
+      case GameResult::ZERO_SHELLS:
+        msg += "no shells remaining";       break;
+    }
+    return msg;
+}
+
+// Enhanced map preprocessing that tracks valid maps
+std::vector<std::shared_ptr<SatelliteView>> Simulator::preloadMapsAndTrackValid(
+    const std::vector<std::string>& mapFiles,
+    std::vector<std::string>& validMapFiles,
+    std::vector<size_t>& mapRows,
+    std::vector<size_t>& mapCols, 
+    std::vector<size_t>& mapMaxSteps,
+    std::vector<size_t>& mapNumShells) const {
+    
+    std::vector<std::shared_ptr<SatelliteView>> mapViews;
+    
+    logDebug("SIMULATOR", "preloadMapsAndTrackValid", "Preloading map data into shared structures");
+    
+    for (const auto& mapFile : mapFiles) {
+        try {
+            MapData md = loadMapWithParams(mapFile);
+            mapViews.emplace_back(std::move(md.view));
+            mapCols.push_back(md.cols);
+            mapRows.push_back(md.rows);
+            mapMaxSteps.push_back(md.maxSteps);
+            mapNumShells.push_back(md.numShells);
+            validMapFiles.push_back(mapFile); // Only add if successful
+            logDebug("MAPLOADER", "preloadMapsAndTrackValid", "Successfully preloaded map: " + mapFile);
+        } catch (const std::exception& ex) {
+            std::string warnMsg = "Skipping invalid map '" + mapFile + "': " + std::string(ex.what());
+            logWarn("MAPLOADER", "preloadMapsAndTrackValid", warnMsg);
+        }
+    }
+    logInfo("SIMULATOR", "preloadMapsAndTrackValid", "Successfully preloaded " + std::to_string(mapViews.size()) + " valid map(s)");
+    
+    return mapViews;
+}
 
 // Competition results file writing
 bool Simulator::writeCompetitionFile(const std::vector<CompetitionEntry>& results) const {
     logInfo("FILEWRITER", "writeCompetitionFile", "Writing competition results file");
 
-    // Tally scores
+    auto scores = calculateScores(results);
+    auto sorted = sortScoresByDescending(scores);
+    auto outPath = buildOutputPath();
+
+    return writeToFile(outPath, sorted) || writeToStdout(sorted);
+}
+
+std::map<std::string, int> Simulator::calculateScores(const std::vector<CompetitionEntry>& results) const {
     std::map<std::string, int> scores;
     for (const auto& entry : results) {
-        const auto& a1 = entry.a1;
-        const auto& a2 = entry.a2;
-        if (!scores.count(a1)) {
-            scores[a1] = 0;
+        // Only initialize if not already in map
+        if (scores.find(entry.a1) == scores.end()) {
+            scores[entry.a1] = 0;
         }
-        if (!scores.count(a2)) {
-            scores[a2] = 0;
+        if (scores.find(entry.a2) == scores.end()) {
+            scores[entry.a2] = 0;
         }
-        int w = entry.res.winner;  // 0=tie, 1=a1, 2=a2
-
+        
+        int w = entry.res.winner;
         if (w == 1) {
-            scores[a1] += 3;
+            scores[entry.a1] += 3;
         } else if (w == 2) {
-            scores[a2] += 3;
+            scores[entry.a2] += 3;
         } else {
-            // tie
-            scores[a1] += 1;
-            scores[a2] += 1;
+            scores[entry.a1] += 1;
+            scores[entry.a2] += 1;
         }
     }
-
+    
     logDebug("FILEWRITER", "writeCompetitionFile", 
         "Calculated scores for " + std::to_string(scores.size()) + " algorithms");
+    return scores;
+}
 
-    // Sort by descending score
+std::vector<std::pair<std::string, int>> Simulator::sortScoresByDescending(
+    const std::map<std::string, int>& scores) const {
     std::vector<std::pair<std::string, int>> sorted(scores.begin(), scores.end());
     std::sort(sorted.begin(), sorted.end(),
-        [](const auto& L, const auto& R) {
-            return L.second > R.second;
-        });
+        [](const auto& L, const auto& R) { return L.second > R.second; });
+    return sorted;
+}
 
-    // Build output path
+fs::path Simulator::buildOutputPath() const {
     auto ts = currentTimestamp();
-    fs::path outPath = fs::path(config_.algorithms_folder)
-                     / ("competition_" + ts + ".txt");
+    return fs::path(config_.algorithms_folder) / ("competition_" + ts + ".txt");
+}
 
-    // Open file (or fallback to stdout)
+bool Simulator::writeToFile(const fs::path& outPath, 
+    const std::vector<std::pair<std::string, int>>& sorted) const {
     std::ofstream ofs(outPath);
     if (!ofs.is_open()) {
         std::string warnMsg = "Cannot create file " + outPath.string() + ", falling back to stdout";
         logWarn("FILEWRITER", "writeCompetitionFile", warnMsg);
         ErrorLogger::instance().log(warnMsg);
-        
-        // Fallback print
-        std::cout << "game_maps_folder=" << config_.game_maps_folder << "\n";
-        std::cout << "game_manager="     << stripSoExtension(config_.game_manager) << "\n\n";
-        for (const auto& p : sorted) {
-            std::cout << p.first << " " << p.second << "\n";
-        }
         return false;
     }
 
     logInfo("FILEWRITER", "writeCompetitionFile", "Writing to file: " + outPath.string());
-
-    // Write contents
-    ofs << "game_maps_folder=" << config_.game_maps_folder << "\n";
-    ofs << "game_manager="     << stripSoExtension(config_.game_manager) << "\n\n";
-    for (const auto& p : sorted) {
-        ofs << p.first << " " << p.second << "\n";
-    }
-
+    writeContent(ofs, sorted);
     logInfo("FILEWRITER", "writeCompetitionFile", "Competition results file written successfully");
     return true;
+}
+
+bool Simulator::writeToStdout(const std::vector<std::pair<std::string, int>>& sorted) const {
+    writeContent(std::cout, sorted);
+    return false;
+}
+
+void Simulator::writeContent(std::ostream& os, 
+    const std::vector<std::pair<std::string, int>>& sorted) const {
+    os << "game_maps_folder=" << config_.game_maps_folder << "\n";
+    os << "game_manager=" << stripSoExtension(config_.game_manager) << "\n\n";
+    for (const auto& p : sorted) {
+        os << p.first << " " << p.second << "\n";
+    }
 }
 
 // Utility methods
@@ -1548,19 +1279,23 @@ void Simulator::cleanup() {
 // Logging methods
 void Simulator::logInfo(const std::string& component, const std::string& function, const std::string& message) const {
     std::lock_guard<std::mutex> lock(debugMutex_);
+
     std::cout << "[T" << std::this_thread::get_id() << "] [INFO] [" << component << "] [" << function << "] " << message << std::endl;
 }
 
 void Simulator::logDebug(const std::string& component, const std::string& function, const std::string& message) const {
     if (config_.debug) {
         std::lock_guard<std::mutex> lock(debugMutex_);
+
         std::cout << "[T" << std::this_thread::get_id() << "] [" << component << "] [" << function << "] " << message << std::endl;
     }
 }
 
 void Simulator::logWarn(const std::string& component, const std::string& function, const std::string& message) const {
     std::lock_guard<std::mutex> lock(debugMutex_);
-    std::cerr << "[T" << std::this_thread::get_id() << "] [WARN] [" << component << "] [" << function << "] " << message << std::endl;
+
+    // std::cerr << "[T" << std::this_thread::get_id() << "] [WARN] [" << component << "] [" << function << "] " << message << std::endl;
+
     // Also log warnings to ErrorLogger
     // LOG_ERROR("WARN: [" + component + "] [" + function + "] " + message);
     ErrorLogger::instance().log("WARN: [" + component + "] [" + function + "] " + message);
@@ -1569,13 +1304,10 @@ void Simulator::logWarn(const std::string& component, const std::string& functio
 
 void Simulator::logError(const std::string& component, const std::string& function, const std::string& message) const {
     std::lock_guard<std::mutex> lock(debugMutex_);
-    std::cerr << "[T" << std::this_thread::get_id() << "] [ERROR] [" << component << "] [" << function << "] " << message << std::endl;
+
+    // std::cerr << "[T" << std::this_thread::get_id() << "] [ERROR] [" << component << "] [" << function << "] " << message << std::endl;
+
     // Also log errors to ErrorLogger
     // LOG_ERROR("ERROR: [" + component + "] [" + function + "] " + message);
     ErrorLogger::instance().log("ERROR: [" + component + "] [" + function + "] " + message);
 }
-
-// Static error log initialization
-// void Simulator::initErrorLog() {
-//     errorLog_.open("errors.txt", std::ios::app);
-// }
