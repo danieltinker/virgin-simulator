@@ -1,0 +1,7 @@
+Empty
+MaxSteps=10
+NumShells=10
+Rows=2
+Cols=5
+1....
+....2
