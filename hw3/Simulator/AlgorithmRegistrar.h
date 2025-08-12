@@ -17,7 +17,11 @@ class AlgorithmRegistrar {
     public:
         AlgorithmAndPlayerFactories(const std::string& so_name) : so_name(so_name) {}
         void setTankAlgorithmFactory(TankAlgorithmFactory&& factory) {
-            assert(tankAlgorithmFactory == nullptr);
+            if(tankAlgorithmFactory){
+                std::cerr << "Warning: Overwriting existing TankAlgorithmFactory for " << so_name << std::endl;
+                return;
+            }
+            // assert(tankAlgorithmFactory == nullptr);
             tankAlgorithmFactory = std::move(factory);
         }
         void setPlayerFactory(PlayerFactory&& factory) {

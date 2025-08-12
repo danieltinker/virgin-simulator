@@ -1,6 +1,6 @@
 Empty
 MaxSteps=10
-NumShells=10
+NumShells=0
 Rows=2
 Cols=5
 1....

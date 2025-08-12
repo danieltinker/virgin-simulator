@@ -14,12 +14,9 @@
 #include <Player.h>
 #include <ActionRequest.h>
 #include <GameResult.h>
-#include "MySatelliteView.h"
-#include "TankAlgorithm.h"
 
 namespace GameManager_315634022 {
 
-/// Maintains the board, tanks, shells, and orchestrates one‐turn advances.
 class GameState {
 public:
     // --- Injected constructor replaces initialize() + factory usage ---
@@ -49,6 +46,7 @@ public:
     // Display state
     void printBoard() const;
     void dumpStep(std::size_t turn) const;
+
     std::size_t getCurrentTurn() const;
     /// Expose the current board for final‐state snapshotting
     const Board& getBoard() const;
@@ -76,6 +74,25 @@ private:
     createSatelliteViewFor(int queryX, int queryY) const;
 
     static const char* directionToArrow(int dir);
+
+    // === extracted helpers to keep methods <= 40 lines ===
+    void logTurnStart(std::size_t N);
+    void gatherActionRequests(std::vector<ActionRequest>& actions,
+                              std::vector<bool>& ignored);
+    void executePhases(std::vector<ActionRequest>& actions,
+                       std::vector<bool>& ignored,
+                       std::vector<bool>& killed);
+    std::string buildTurnLogString(const std::vector<ActionRequest>& logActions,
+                                   const std::vector<bool>& ignored,
+                                   const std::vector<bool>& killed) const;
+    // printBoard helpers
+    std::string renderRow(std::size_t r) const;
+    std::string tankArrowAt(std::size_t r, std::size_t c) const;
+    // shell update helpers
+    std::vector<std::pair<int,int>> computeShellDeltas() const;
+    void processShellHalfStep(const std::vector<std::pair<int,int>>& delta,
+                              const std::vector<std::pair<int,int>>& oldPos,
+                              int step);
 
     // ---- Internal state ----
     bool                     verbose_;
@@ -122,14 +139,8 @@ private:
     std::vector<Shell>       shells_;
     std::set<std::size_t>    toRemove_;
     std::map<std::pair<int,int>, std::vector<std::size_t>> positionMap_;
+
+    std::size_t              zeroShellsStreak_ = 0;
 };
 
-
 } // namespace GameManager_315634022
-
-
-
-
-
-
-

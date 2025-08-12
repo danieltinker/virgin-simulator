@@ -18,14 +18,11 @@ public:
          std::size_t y,
          std::size_t numShells);
 
-    ~Tank();
-
-    // Accessors:
-    int getPlayerIndex() const;
+    int  getPlayerIndex() const;
     std::size_t getX() const;
     std::size_t getY() const;
-    bool isAlive() const;
     std::size_t getShellsRemaining() const;
+    bool isAlive() const;
     int getCooldown() const;
     int getDirectionIndex() const;
 
@@ -41,14 +38,24 @@ public:
     // For applyAction, move deltas for each direction index:
     static constexpr int DX[8] = { -1, -1,  0, +1, +1, +1,  0, -1 };
     static constexpr int DY[8] = {  0, +1, +1, +1,  0, -1, -1, -1 };
+
+private:
+    // === extracted private helpers to keep applyAction <= 40 lines ===
+    void applyMoveForward();
+    void applyMoveBackward();
+    void rotateLeft90();
+    void rotateRight90();
+    void rotateLeft45();
+    void rotateRight45();
+    void handleShoot();
+
 private:
     int playerIndex_;
     std::size_t x_, y_;
     std::size_t shellsRemaining_;
     int cooldown_;
     bool alive_;
-    int directionIndex_;  // 0=Up, 1=Up-Right, 2=Right, 3=Down-Right, 4=Down, 5=Down-Left, 6=Left, 7=Up-Left
-
+    int directionIndex_;  // 0=Up,1=Up-Right,2=Right,3=Down-Right,4=Down,5=Down-Left,6=Left,7=Up-Left
 };
 
-} // namespace arena
+} // namespace GameManager_315634022

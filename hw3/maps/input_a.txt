@@ -1,6 +1,6 @@
 SurroundedByMines
-MaxSteps=200
-NumShells=20
+MaxSteps=2
+NumShells=0
 Rows=4
 Cols=7
 #@@@###

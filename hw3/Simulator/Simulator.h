@@ -82,6 +82,8 @@ public:
     size_t getSuccessfullyLoadedGameManagers() const { return loadedGameManagers_; }
 
 private:
+    // In Simulator.h, add to the private section:
+    std::string baseName(const std::string& path) const;
     // Parameter parsing helpers
     void validateParameterStart(const std::string& line, const std::string& paramName, const std::string& path) const;
     size_t findEqualsSign(const std::string& line, const std::string& path) const;

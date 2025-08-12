@@ -58,7 +58,15 @@ int Simulator::run() {
     logInfo("SIMULATOR", "run", "Simulation completed with exit code " + std::to_string(result));
     return result;
 }
-
+// ---------- small utils ----------
+std::string Simulator::baseName(const std::string& path) const {
+    std::string name = path;
+    size_t last_slash = name.find_last_of("/\\");
+    if (last_slash != std::string::npos) name = name.substr(last_slash + 1);
+    size_t last_dot = name.find_last_of('.');
+    if (last_dot != std::string::npos) name = name.substr(0, last_dot);
+    return name;
+}
 // Comparative mode implementation
 int Simulator::runComparative() {
     logInfo("SIMULATOR", "runComparative", "Starting comparative mode");
@@ -502,7 +510,7 @@ void Simulator::logNormalizedGrid(const std::vector<std::string>& normalizedGrid
     for (size_t r = 0; r < normalizedGrid.size(); ++r) {
         std::string debugStr = "Row " + std::to_string(r) + ": '";
         for (char c : normalizedGrid[r]) {
-            debugStr += (c == ' ') ? '_' : c;  // Show spaces as underscores for clarity
+            debugStr += (c == ' ') ? ' ' : c;  // Show spaces as underscores for clarity
         }
         debugStr += "'";
         logDebug("MAPLOADER", "loadMapWithParams", debugStr);
@@ -875,13 +883,13 @@ GameResult Simulator::runComparativeGame(const auto& gmEntry, const auto& A, con
                                         const std::string& mapFile, const std::string& algo1Name,
                                         const std::string& algo2Name) {
     auto gm = gmEntry.factory(config_.verbose);
-    auto p1 = A.createPlayer(0, md.rows, md.cols, md.maxSteps, md.numShells);
-    auto p2 = B.createPlayer(1, md.rows, md.cols, md.maxSteps, md.numShells);
+    auto p1 = A.createPlayer(1, md.cols, md.rows, md.maxSteps, md.numShells);
+    auto p2 = B.createPlayer(2, md.cols, md.rows, md.maxSteps, md.numShells);
 
     return gm->run(
         md.cols, md.rows,
         realMap,
-        mapFile,
+        baseName(mapFile),
         md.maxSteps, md.numShells,
         *p1, algo1Name,
         *p2, algo2Name,
@@ -993,13 +1001,13 @@ GameResult Simulator::runCompetitionGame(AlgorithmRegistrar& algoReg, const auto
     auto gm = gmEntry.factory(config_.verbose);
     auto& A = *(algoReg.begin() + i);
     auto& B = *(algoReg.begin() + j);
-    auto p1 = A.createPlayer(0, rows, cols, mSteps, nShells);
-    auto p2 = B.createPlayer(1, rows, cols, mSteps, nShells);
+    auto p1 = A.createPlayer(1, cols, rows, mSteps, nShells);
+    auto p2 = B.createPlayer(2, cols, rows, mSteps, nShells);
 
     return gm->run(
         cols, rows,
         realMap,
-        mapFile,
+        baseName(mapFile),
         mSteps, nShells,
         *p1, algo1Name,
         *p2, algo2Name,

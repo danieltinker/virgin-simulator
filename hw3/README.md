@@ -1,3 +1,108 @@
+final debug for competitions:
+- clear logs.
+- runnning 
+# my Simulator:
+[my gm, wokring algos]
+  ./simulator_315634022 --competition \
+    game_maps_folder=../maps \
+    game_manager=../GameManager/sos/GameManager_315634022.so \
+    algorithms_folder=../Algorithm/working \
+    num_threads=1 \
+    --verbose
+
+[my gm, my algos]
+  ./simulator_315634022 --competition \
+    game_maps_folder=../maps \
+    game_manager=../GameManager/sos/GameManager_315634022.so \
+    algorithms_folder=../Algorithm/sos \
+    num_threads=1 \
+    --verbose
+
+[hagai gm, wokring algos]
+  ./simulator_315634022 --competition \
+    game_maps_folder=../maps \
+    game_manager=../GameManager/hagai-gm/GameManager_322996059_211779582.so \
+    algorithms_folder=../Algorithm/working \
+    num_threads=1 \
+    --verbose
+
+[hagai gm, my algos]
+  ./simulator_315634022 --competition \
+    game_maps_folder=../maps \
+    game_manager=../GameManager/hagai-gm/GameManager_322996059_211779582.so \
+    algorithms_folder=../Algorithm/sos \
+    num_threads=1 \
+    --verbose
+
+
+[dan gm, working algos]
+  ./simulator_315634022 --competition \
+    game_maps_folder=../maps \
+    game_manager=../GameManager/hagai-gm/GameManager_206038929_314620071.so \
+    algorithms_folder=../Algorithm/working \
+    num_threads=1 \
+    --verbose
+
+[dan gm, my algos]
+  ./simulator_315634022 --competition \
+    game_maps_folder=../maps \
+    game_manager=../GameManager/hagai-gm/GameManager_206038929_314620071.so \
+    algorithms_folder=../Algorithm/sos \
+    num_threads=1 \
+    --verbose
+
+# dan simulator:   |   chmod 777 ./simulator_206038929_314620071
+[dan gm, my algos]
+  ./simulator_206038929_314620071 -competition \
+    game_maps_folder=../maps \
+    game_manager=../GameManager/hagai-gm/GameManager_206038929_314620071.so \
+    algorithms_folder=../Algorithm/sos \
+    num_threads=1 \
+    -verbose
+
+[dan gm, working algos]
+ ./simulator_206038929_314620071 -competition \
+    game_maps_folder=../maps \
+    game_manager=../GameManager/hagai-gm/GameManager_206038929_314620071.so \
+    algorithms_folder=../Algorithm/working \
+    num_threads=1 \
+    -verbose
+
+[my gm, working algos]
+ ./simulator_206038929_314620071 -competition \
+    game_maps_folder=../maps \
+    game_manager=../GameManager/sos/GameManager_315634022.so \
+    algorithms_folder=../Algorithm/working \
+    num_threads=1 \
+    -verbose
+
+[my gm, my algos]
+ ./simulator_206038929_314620071 -competition \
+    game_maps_folder=../maps \
+    game_manager=../GameManager/sos/GameManager_315634022.so \
+    algorithms_folder=../Algorithm/sos \
+    num_threads=1 \
+    -verbose
+
+
+[hagai gm, wokring algos]
+   ./simulator_206038929_314620071 -competition \
+    game_maps_folder=../maps \
+    game_manager=../GameManager/hagai-gm/GameManager_322996059_211779582.so \
+    algorithms_folder=../Algorithm/working \
+    num_threads=1 \
+    -verbose
+
+[hagai gm, my algos]
+   ./simulator_206038929_314620071 -competition \
+    game_maps_folder=../maps \
+    game_manager=../GameManager/hagai-gm/GameManager_322996059_211779582.so \
+    algorithms_folder=../Algorithm/sos \
+    num_threads=1 \
+    -verbose
+
+
+
 # Overview & Flows:
 /Simulator/main.cpp execute with flags to run in 2 diffrent mode
 > in main Parsing Arguments from CLI then Running in comparative or competetive mode:
@@ -19,6 +124,16 @@ from root directory:
 4. copy one of these execution commands: 
 > [!WARNING] the ones using algorithm-sos \ gamemanagers-sos  are not working
 
+
+  ./simulator_315634022 --competition \
+  game_maps_folder=../maps \
+  game_manager=../GameManager/hagai-gm/GameManager_322996059_211779582.so \
+  algorithms_folder=../Algorithm/working \
+  num_threads=1 \
+  --verbose
+
+
+
 # run competition (all maps, all Algos, 1 GM from /sos )
   ./simulator_315634022 --competition \
   game_maps_folder=../maps \
@@ -36,6 +151,14 @@ from root directory:
   --verbose
 
 
+  ./simulator_315634022 --competition \
+  game_maps_folder=../maps \
+  game_manager=../GameManager/sos/GameManager_315634022.so \
+  algorithms_folder=../Algorithm/hagai-algo\
+  num_threads=1 \
+  --verbose
+
+
 # run comparative (all GMs, 2 Algos, 1 Map from my folder )
 ./simulator_315634022 --comparative \
   game_map=../maps/basic.txt \
@@ -45,11 +168,13 @@ from root directory:
   num_threads=1
 
 
+Algorithm_322996059_211779582.so
+
   ./simulator_315634022 --comparative \
   game_map=../maps/basic.txt \
   game_managers_folder=../GameManager/sos/ \
   algorithm1=../Algorithm/sos/Algorithm_315634022.so \
-  algorithm2=../Algorithm/sos/Algorithm_815634022.so \
+  algorithm2=../Algorithm/sos/Algorithm_322996059_211779582.so \
   num_threads=1
 
 # run comparative (all GMs, 2 Algos, 1 Map from others )

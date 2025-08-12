@@ -27,9 +27,8 @@ public:
     
     // Implement the pure virtual function from SatelliteView
     virtual char getObjectAt(size_t x, size_t y) const override {
-        if (y >= rows || x >= cols) {
-            return ' ';
-        }
+        if (x >= cols || y >= rows) return '&';   // ← new
+        // if (x >= cols_ || y >= rows_) return '&';   // ← new
         return grid[y][x];
     }
     

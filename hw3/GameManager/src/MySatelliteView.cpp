@@ -49,7 +49,7 @@ MySatelliteView::MySatelliteView(const std::vector<std::vector<char>>& input_gri
       rows(input_rows), cols(input_cols), tank_x(input_tank_x), tank_y(input_tank_y)
 {
     DEBUG_PRINT("SATELLITEVIEW", "constructor", 
-        "Creating MySatelliteView - dimensions: " + std::to_string(cols) + "x" + std::to_string(rows) + 
+        "Creating MySatelliteView - dimensions: " + std::to_string(rows) + "x" + std::to_string(cols) + 
         ", tank position: (" + std::to_string(tank_x) + "," + std::to_string(tank_y) + ")", true);
 
     // Initialize both 2D and 1D representations
