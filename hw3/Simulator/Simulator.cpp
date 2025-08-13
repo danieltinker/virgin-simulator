@@ -1035,6 +1035,89 @@ void Simulator::finalizeTaskExecution() {
     threadPool_->shutdown();
     threadPool_ = std::make_unique<ThreadPool>(config_.numThreads);
 }
+
+// // Comparative results file writing
+// bool Simulator::writeComparativeFile(const std::vector<ComparativeEntry>& entries) const {
+//     logInfo("FILEWRITER", "writeComparativeFile", "Writing comparative results file");
+
+//     // Group GMs by identical outcome
+//     struct Outcome {
+//         int winner;
+//         GameResult::Reason reason;
+//         size_t rounds;
+//         std::string finalState;
+//         bool operator<(const Outcome& o) const {
+//             if (winner != o.winner) return winner < o.winner;
+//             if (reason != o.reason) return reason < o.reason;
+//             if (rounds != o.rounds) return rounds < o.rounds;
+//             return finalState < o.finalState;
+//         }
+//     };
+
+//     std::map<Outcome, std::vector<std::string>> groups;
+//     for (const auto& e : entries) {
+//         Outcome key{
+//             e.res.winner,
+//             e.res.reason,
+//             e.res.rounds,
+//             e.finalState
+//         };
+//         groups[key].push_back(e.gmName);
+//     }
+
+//     logDebug("FILEWRITER", "writeComparativeFile", 
+//         "Grouped results into " + std::to_string(groups.size()) + " outcome categories");
+
+//     // Build output path
+//     auto ts = currentTimestamp();
+//     fs::path outPath = fs::path(config_.game_managers_folder)
+//                      / ("comparative_results_" + ts + ".txt");
+
+//     // Open file (or fallback)
+//     std::ofstream ofs(outPath);
+//     if (!ofs.is_open()) {
+//         std::string warnMsg = "Cannot create file " + outPath.string() + ", falling back to stdout";
+//         logWarn("FILEWRITER", "writeComparativeFile", warnMsg);
+//         ErrorLogger::instance().log(warnMsg);
+        
+//         // Fallback to stdout
+//         std::cout << "game_map="   << config_.game_map   << "\n";
+//         std::cout << "algorithm1=" << stripSoExtension(config_.algorithm1) << "\n";
+//         std::cout << "algorithm2=" << stripSoExtension(config_.algorithm2) << "\n\n";
+//         for (const auto& [outcome, gms] : groups) {
+//             for (size_t i = 0; i < gms.size(); ++i) {
+//                 std::cout << gms[i] << (i + 1 < gms.size() ? "," : "");
+//             }
+//             std::cout << "\n";
+//             std::cout << outcomeMessage(outcome.winner, outcome.reason) << "\n";
+//             std::cout << outcome.rounds << "\n";
+//             std::cout << outcome.finalState << "\n\n";
+//         }
+//         return false;
+//     }
+
+//     logInfo("FILEWRITER", "writeComparativeFile", "Writing to file: " + outPath.string());
+
+//     // Write header
+//     ofs << "game_map="   << config_.game_map   << "\n";
+//     ofs << "algorithm1=" << stripSoExtension(config_.algorithm1) << "\n";
+//     ofs << "algorithm2=" << stripSoExtension(config_.algorithm2) << "\n\n";
+
+//     // Write grouped results
+//     for (const auto& [outcome, gms] : groups) {
+//         for (size_t i = 0; i < gms.size(); ++i) {
+//             ofs << gms[i] << (i + 1 < gms.size() ? "," : "");
+//         }
+//         ofs << "\n";
+//         ofs << outcomeMessage(outcome.winner, outcome.reason) << "\n";
+//         ofs << outcome.rounds << "\n";
+//         ofs << outcome.finalState << "\n\n";
+//     }
+    
+//     logInfo("FILEWRITER", "writeComparativeFile", "Comparative results file written successfully");
+//     return true;
+// }
+
 // Comparative results file writing
 bool Simulator::writeComparativeFile(const std::vector<ComparativeEntry>& entries) const {
     logInfo("FILEWRITER", "writeComparativeFile", "Writing comparative results file");
@@ -1055,17 +1138,30 @@ bool Simulator::writeComparativeFile(const std::vector<ComparativeEntry>& entrie
 
     std::map<Outcome, std::vector<std::string>> groups;
     for (const auto& e : entries) {
-        Outcome key{
-            e.res.winner,
-            e.res.reason,
-            e.res.rounds,
-            e.finalState
-        };
+        Outcome key{ e.res.winner, e.res.reason, e.res.rounds, e.finalState };
         groups[key].push_back(e.gmName);
     }
 
-    logDebug("FILEWRITER", "writeComparativeFile", 
-        "Grouped results into " + std::to_string(groups.size()) + " outcome categories");
+    logDebug("FILEWRITER", "writeComparativeFile",
+             "Grouped results into " + std::to_string(groups.size()) + " outcome categories");
+
+    // Flatten and sort: DESC by group size; tie-break deterministically by Outcome fields
+    std::vector<std::pair<Outcome, std::vector<std::string>>> items;
+    items.reserve(groups.size());
+    for (auto& kv : groups) {
+        auto& gms = kv.second;
+        std::sort(gms.begin(), gms.end()); // stable order inside group
+        items.emplace_back(kv.first, gms);
+    }
+    std::sort(items.begin(), items.end(),
+        [](const auto& L, const auto& R) {
+            if (L.second.size() != R.second.size())
+                return L.second.size() > R.second.size(); // DESC by group size
+            if (L.first.winner != R.first.winner) return L.first.winner < R.first.winner;
+            if (L.first.reason != R.first.reason) return L.first.reason < R.first.reason;
+            if (L.first.rounds != R.first.rounds) return L.first.rounds < R.first.rounds;
+            return L.first.finalState < R.first.finalState;
+        });
 
     // Build output path
     auto ts = currentTimestamp();
@@ -1078,19 +1174,25 @@ bool Simulator::writeComparativeFile(const std::vector<ComparativeEntry>& entrie
         std::string warnMsg = "Cannot create file " + outPath.string() + ", falling back to stdout";
         logWarn("FILEWRITER", "writeComparativeFile", warnMsg);
         ErrorLogger::instance().log(warnMsg);
-        
+
         // Fallback to stdout
         std::cout << "game_map="   << config_.game_map   << "\n";
         std::cout << "algorithm1=" << stripSoExtension(config_.algorithm1) << "\n";
         std::cout << "algorithm2=" << stripSoExtension(config_.algorithm2) << "\n\n";
-        for (const auto& [outcome, gms] : groups) {
+
+        for (size_t idx = 0; idx < items.size(); ++idx) {
+            const auto& outcome = items[idx].first;
+            const auto& gms     = items[idx].second;
+
+            // GM list (comma-separated, no extra spaces to match existing style)
             for (size_t i = 0; i < gms.size(); ++i) {
                 std::cout << gms[i] << (i + 1 < gms.size() ? "," : "");
             }
             std::cout << "\n";
             std::cout << outcomeMessage(outcome.winner, outcome.reason) << "\n";
             std::cout << outcome.rounds << "\n";
-            std::cout << outcome.finalState << "\n\n";
+            std::cout << outcome.finalState; // finalState already contains newlines
+            std::cout << "\n";               // exactly one blank line between groups
         }
         return false;
     }
@@ -1102,20 +1204,28 @@ bool Simulator::writeComparativeFile(const std::vector<ComparativeEntry>& entrie
     ofs << "algorithm1=" << stripSoExtension(config_.algorithm1) << "\n";
     ofs << "algorithm2=" << stripSoExtension(config_.algorithm2) << "\n\n";
 
-    // Write grouped results
-    for (const auto& [outcome, gms] : groups) {
+    // Write grouped results (sorted)
+    for (size_t idx = 0; idx < items.size(); ++idx) {
+        const auto& outcome = items[idx].first;
+        const auto& gms     = items[idx].second;
+
+        // GM list (comma-separated, no extra spaces to match existing style)
         for (size_t i = 0; i < gms.size(); ++i) {
             ofs << gms[i] << (i + 1 < gms.size() ? "," : "");
         }
         ofs << "\n";
         ofs << outcomeMessage(outcome.winner, outcome.reason) << "\n";
         ofs << outcome.rounds << "\n";
-        ofs << outcome.finalState << "\n\n";
+        ofs << outcome.finalState; // finalState already contains newlines
+        ofs << "\n";               // exactly one blank line between groups
     }
-    
+
     logInfo("FILEWRITER", "writeComparativeFile", "Comparative results file written successfully");
     return true;
 }
+
+
+
 // Outcome message formatting
 std::string Simulator::outcomeMessage(int winner, GameResult::Reason reason) const {
     std::string msg;

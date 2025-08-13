@@ -3,53 +3,53 @@ final debug for competitions:
 - runnning 
 # my Simulator:
 [my gm, wokring algos]
-  ./simulator_315634022 --competition \
+  ./simulator_315634022 -competition \
     game_maps_folder=../maps \
     game_manager=../GameManager/sos/GameManager_315634022.so \
     algorithms_folder=../Algorithm/working \
     num_threads=1 \
-    --verbose
+    -verbose
 
 [my gm, my algos]
-  ./simulator_315634022 --competition \
+  ./simulator_315634022 -competition \
     game_maps_folder=../maps \
     game_manager=../GameManager/sos/GameManager_315634022.so \
     algorithms_folder=../Algorithm/sos \
     num_threads=1 \
-    --verbose
+    -verbose
 
 [hagai gm, wokring algos]
-  ./simulator_315634022 --competition \
+  ./simulator_315634022 -competition \
     game_maps_folder=../maps \
     game_manager=../GameManager/hagai-gm/GameManager_322996059_211779582.so \
     algorithms_folder=../Algorithm/working \
     num_threads=1 \
-    --verbose
+    -verbose
 
 [hagai gm, my algos]
-  ./simulator_315634022 --competition \
+  ./simulator_315634022 -competition \
     game_maps_folder=../maps \
     game_manager=../GameManager/hagai-gm/GameManager_322996059_211779582.so \
     algorithms_folder=../Algorithm/sos \
     num_threads=1 \
-    --verbose
+    -verbose
 
 
 [dan gm, working algos]
-  ./simulator_315634022 --competition \
+  ./simulator_315634022 -competition \
     game_maps_folder=../maps \
     game_manager=../GameManager/hagai-gm/GameManager_206038929_314620071.so \
     algorithms_folder=../Algorithm/working \
     num_threads=1 \
-    --verbose
+    -verbose
 
 [dan gm, my algos]
-  ./simulator_315634022 --competition \
+  ./simulator_315634022 -competition \
     game_maps_folder=../maps \
     game_manager=../GameManager/hagai-gm/GameManager_206038929_314620071.so \
     algorithms_folder=../Algorithm/sos \
     num_threads=1 \
-    --verbose
+    -verbose
 
 # dan simulator:   |   chmod 777 ./simulator_206038929_314620071
 [dan gm, my algos]
@@ -135,50 +135,50 @@ from root directory:
 
 
 # run competition (all maps, all Algos, 1 GM from /sos )
-  ./simulator_315634022 --competition \
+  ./simulator_315634022 -competition \
   game_maps_folder=../maps \
   game_manager=../GameManager/sos/GameManager_315634022.so \
   algorithms_folder=../Algorithm/sos \
   num_threads=1 \
-  --verbose
+  -verbose
 
 # run competition (all maps, all Algos, 1 GM from /sos )
-  ./simulator_315634022 --competition \
+  ./simulator_315634022 -competition \
   game_maps_folder=../maps \
   game_manager=../GameManager/sos/GameManager_315634022.so \
   algorithms_folder=../Algorithm/algorithm-sos \
   num_threads=1 \
-  --verbose
+  -verbose
 
 
-  ./simulator_315634022 --competition \
+  ./simulator_315634022 -competition \
   game_maps_folder=../maps \
   game_manager=../GameManager/sos/GameManager_315634022.so \
   algorithms_folder=../Algorithm/hagai-algo\
   num_threads=1 \
-  --verbose
+  -verbose
 
 
-  ./simulator_315634022 --competition \
+  ./simulator_315634022 -competition \
   game_maps_folder=../maps \
   game_manager=../GameManager/faulty-gms/GameManager_209399021_208239152.so \
   algorithms_folder=../Algorithm/hagai-algo\
   num_threads=1 \
-  --verbose
+  -verbose
 
 
 # run comparative (all GMs, 2 Algos, 1 Map from my folder )
-./simulator_315634022 --comparative \
+./simulator_315634022 -comparative \
   game_map=../maps/basic.txt \
   game_managers_folder=../GameManager/sos/ \
   algorithm1=../Algorithm/sos/Algorithm_315634022.so \
-  algorithm2=../Algorithm/sos/Algorithm_322996059_211779582_2.so \
+  algorithm2=../Algorithm/sos/Algorithm_815634022.so \
   num_threads=1
 
 
 Algorithm_322996059_211779582.so
 
-  ./simulator_315634022 --comparative \
+  ./simulator_315634022 -comparative \
   game_map=../maps/basic.txt \
   game_managers_folder=../GameManager/sos/ \
   algorithm1=../Algorithm/sos/Algorithm_315634022.so \
@@ -186,11 +186,26 @@ Algorithm_322996059_211779582.so
   num_threads=1
 
 # run comparative (all GMs, 2 Algos, 1 Map from others )
-./simulator_315634022 --comparative \
+./simulator_315634022 -comparative \
   game_map=../maps/basic.txt \
   game_managers_folder=../GameManager/gamemanagers-sos/ \
   algorithm1=../Algorithm/algorithms-sos/Algorithm_322213836_212054837.so \
   algorithm2=../Algorithm/algorithms-sos/Algorithm_322573304_322647603.so \
+  num_threads=1
+
+
+./simulator_315634022 -comparative \
+  game_map=../maps/basic.txt \
+  game_managers_folder=../GameManager/hagai-gm/ \
+  algorithm1=../Algorithm/hagai-algo/Algorithm_322213836_212054837.so \
+  algorithm2=../Algorithm/hagai-algo/Algorithm_322996059_211779582.so \
+  num_threads=1
+  
+./simulator_315634022 -comparative \
+  game_map=../maps/basic.txt \
+  game_managers_folder=../GameManager/gamemanagers-sos/ \
+  algorithm1=../Algorithm/Algorithms/Algorithm_206038929_314620071.so \
+  algorithm2=../Algorithm/Algorithms/Algorithm_209399021_208239152.so \
   num_threads=1
 
 # POTENTIAL BUGS
@@ -225,3 +240,17 @@ Algorithm_322996059_211779582.so
 Because you're compiling them alongside or with access to the same interface code. ABI compatibility is accidentally preserved due to co-compilation.
 When using external .so files:
 You’ve violated the One Definition Rule (ODR) across dynamic linkage — the types are visually identical but semantically incompatible.
+
+
+
+
+
+./simulator_315634022 -comparative game_map=../test_maps_v4/input_b.txt game_managers_folder=../GameManager/hagai-gm/ algorithm1=../Algorithm/hagai-algo/Algorithm_322213836_212054837.so algorithm2=../Algorithm/hagai-algo/Algorithm_322996059_211779582.so num_threads=1
+
+./simulator_315634022 -comparative game_map=../test_maps_v4/valid_extra_rows.txt game_managers_folder=../GameManager/hagai-gm/ algorithm1=../Algorithm/hagai-algo/Algorithm_322213836_212054837.so algorithm2=../Algorithm/hagai-algo/Algorithm_322996059_211779582.so num_threads=1
+
+./simulator_315634022 -comparative game_map=../test_maps_v4/valid_extra_cols.txt game_managers_folder=../GameManager/hagai-gm/ algorithm1=../Algorithm/hagai-algo/Algorithm_322213836_212054837.so algorithm2=../Algorithm/hagai-algo/Algorithm_322996059_211779582.so num_threads=1
+
+./simulator_315634022 -comparative game_map=../test_maps_v4/valid_input_3v3_P2_trapped.txt game_managers_folder=../GameManager/hagai-gm/ algorithm1=../Algorithm/hagai-algo/Algorithm_322213836_212054837.so algorithm2=../Algorithm/hagai-algo/Algorithm_322996059_211779582.so num_threads=1
+
+./simulator_315634022 -comparative game_map=../test_maps_v4/valid_input_2v7.txt game_managers_folder=../GameManager/hagai-gm/ algorithm1=../Algorithm/hagai-algo/Algorithm_322213836_212054837.so algorithm2=../Algorithm/hagai-algo/Algorithm_322996059_211779582.so num_threads=1

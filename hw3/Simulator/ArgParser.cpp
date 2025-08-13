@@ -9,18 +9,18 @@ namespace fs = std::filesystem;
 void printUsage(const char* prog) {
     std::cerr << "Usage:\n"
               << "  Comparative mode:\n"
-              << "    " << prog << " --comparative \\\n"
+              << "    " << prog << " -comparative \\\n"
               << "      game_map=<file> \\\n"
               << "      game_managers_folder=<dir> \\\n"
               << "      algorithm1=<so> \\\n"
               << "      algorithm2=<so> \\\n"
-              << "      [num_threads=<N>] [--verbose]\n\n"
+              << "      [num_threads=<N>] [-verbose]\n\n"
               << "  Competition mode:\n"
-              << "    " << prog << " --competition \\\n"
+              << "    " << prog << " -competition \\\n"
               << "      game_maps_folder=<dir> \\\n"
               << "      game_manager=<so> \\\n"
               << "      algorithms_folder=<dir> \\\n"
-              << "      [num_threads=<N>] [--verbose]\n";
+              << "      [num_threads=<N>] [-verbose]\n";
 }
 
 bool parseArguments(int argc, char* argv[], Config& cfg) {
@@ -44,9 +44,9 @@ void parseArgumentsList(int argc, char* argv[], Config& cfg, std::vector<std::st
 }
 
 bool processArgument(const std::string& arg, Config& cfg) {
-    if      (arg == "--comparative")            { cfg.modeComparative = true; return true; }
-    else if (arg == "--competition")            { cfg.modeCompetition = true; return true; }
-    else if (arg == "--verbose")                { cfg.verbose = true; return true; }
+    if      (arg == "-comparative")            { cfg.modeComparative = true; return true; }
+    else if (arg == "-competition")            { cfg.modeCompetition = true; return true; }
+    else if (arg == "-verbose")                { cfg.verbose = true; return true; }
     else if (arg == "--debug")                  { cfg.debug = true; return true; }
     else if (arg.rfind("num_threads=", 0) == 0) { cfg.numThreads = std::stoi(stripKey(arg, "num_threads=")); return true; }
     else if (arg.rfind("game_map=", 0) == 0)    { cfg.game_map = stripKey(arg, "game_map="); return true; }
@@ -79,7 +79,7 @@ bool checkUnsupportedArgs(const std::vector<std::string>& unsupported, const cha
 
 bool checkModeSelection(const Config& cfg, const char* prog) {
     if (cfg.modeComparative == cfg.modeCompetition) {
-        std::cerr << "Error: must specify exactly one of --comparative or --competition\n\n";
+        std::cerr << "Error: must specify exactly one of -comparative or -competition\n\n";
         printUsage(prog);
         return false;
     }
