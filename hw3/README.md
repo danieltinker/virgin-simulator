@@ -159,6 +159,14 @@ from root directory:
   --verbose
 
 
+  ./simulator_315634022 --competition \
+  game_maps_folder=../maps \
+  game_manager=../GameManager/faulty-gms/GameManager_209399021_208239152.so \
+  algorithms_folder=../Algorithm/hagai-algo\
+  num_threads=1 \
+  --verbose
+
+
 # run comparative (all GMs, 2 Algos, 1 Map from my folder )
 ./simulator_315634022 --comparative \
   game_map=../maps/basic.txt \

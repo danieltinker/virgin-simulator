@@ -178,6 +178,29 @@ GameResult MyGameManager_315634022::run(
                    player1, name1, player2, name2,
                    player1_tank_algo_factory, player2_tank_algo_factory);
 
+
+    // --- Early termination guard (before any player interaction) ---
+    {
+        const Board& B = state_->getBoard();
+        std::size_t p1 = 0, p2 = 0;
+        for (std::size_t y = 0; y < B.getRows(); ++y) {
+            for (std::size_t x = 0; x < B.getCols(); ++x) {
+                const auto c = B.getCell(static_cast<int>(x), static_cast<int>(y)).content;
+                if (c == CellContent::TANK1)      ++p1;
+                else if (c == CellContent::TANK2) ++p2;
+            }
+        }
+        if (p1 == 0 || p2 == 0) {
+            INFO_PRINT("GAMEEND", "run",
+                "Early termination BEFORE gameLoop: p1=" + std::to_string(p1) +
+                ", p2=" + std::to_string(p2) +
+                " -> reason=ALL_TANKS_DEAD, rounds=0");
+            // Reuse existing finalize(): winner/reason/rounds derived consistently.
+            return finalize();
+        }
+    }
+
+
     gameLoop();
 
     return finalize();
@@ -277,15 +300,26 @@ GameResult MyGameManager_315634022::finalize() {
     gr.rounds = state_->getCurrentTurn();
 
     // Write the exact final line to the plain log (no headers/footers)
+        // Write the exact final line to the plain log (no headers/footers).
+    // On early termination (no P1/P2 at start) resultStr_ may be empty because
+    // checkGameEndConditions() never ran; synthesize the canonical line here.
     if (verbose_ && log_file_.is_open()) {
-        const std::string finalLine = state_->getResultString();
+        std::string finalLine = state_->getResultString();
+        if (finalLine.empty()) {
+            if (p1 == 0 && p2 == 0) {
+                finalLine = "Tie, both players have zero tanks";
+            } else if (p1 == 0) {
+                finalLine = "Player 2 won with " + std::to_string(p2) + " tanks still alive";
+            } else if (p2 == 0) {
+                finalLine = "Player 1 won with " + std::to_string(p1) + " tanks still alive";
+            }
+        }
         if (!finalLine.empty()) {
-            log_file_ << finalLine << "\n";
+           log_file_ << finalLine << "\n";
             log_file_.flush();
         }
         log_file_.close();
     }
-
     // Detailed one-liner summary of the result for debugging
     DEBUG_PRINT("GAMEMANAGER", "finalize", summarizeGameResult(gr, B), verbose_);
 

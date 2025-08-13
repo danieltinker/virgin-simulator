@@ -860,6 +860,7 @@ void Simulator::executeComparativeGame(const auto& gmEntry, const auto& A, const
                                       const MapData& md, SatelliteView& realMap,
                                       const std::string& mapFile, const std::string& algo1Name,
                                       const std::string& algo2Name, size_t gi) {
+    const std::string gmName = stripSoExtension(validGameManagerPaths_[gi]);
     try {
         GameResult gr = runComparativeGame(gmEntry, A, B, md, realMap, mapFile, algo1Name, algo2Name);
         std::string finalMap = buildFinalMapString(gr, md);
@@ -872,11 +873,12 @@ void Simulator::executeComparativeGame(const auto& gmEntry, const auto& A, const
         );
         totalGamesPlayed_++;
     } catch (const std::exception& ex) {
-        ErrorLogger::instance().logGameManagerError(mapFile, algo1Name, algo2Name, ex.what());
+        ErrorLogger::instance().logGameManagerError(mapFile, algo1Name, algo2Name,"GM='" + gmName + "': " + std::string(ex.what()));
     } catch (...) {
-        ErrorLogger::instance().logGameManagerError(mapFile, algo1Name, algo2Name, "Unknown error occurred.");
+        ErrorLogger::instance().logGameManagerError(mapFile, algo1Name, algo2Name, "GM='" + gmName + "': Unknown error occurred.");
+     }
     }
-}
+
 
 GameResult Simulator::runComparativeGame(const auto& gmEntry, const auto& A, const auto& B,
                                         const MapData& md, SatelliteView& realMap,
@@ -978,6 +980,8 @@ void Simulator::executeCompetitionGame(AlgorithmRegistrar& algoReg, const auto& 
                                       size_t i, size_t j) {
     const std::string algo1Name = stripSoExtension(validAlgorithmPaths_[i]);
     const std::string algo2Name = stripSoExtension(validAlgorithmPaths_[j]);
+    const std::string gmName = stripSoExtension(config_.game_manager);
+
 
     try {
         GameResult gr = runCompetitionGame(algoReg, gmEntry, realMap, cols, rows, 
@@ -987,9 +991,9 @@ void Simulator::executeCompetitionGame(AlgorithmRegistrar& algoReg, const auto& 
         competitionResults_.emplace_back(mapFile, algo1Name, algo2Name, std::move(gr));
         totalGamesPlayed_++;
     } catch (const std::exception& ex) {
-        ErrorLogger::instance().logGameManagerError(mapFile, algo1Name, algo2Name, ex.what());
+        ErrorLogger::instance().logGameManagerError(mapFile, algo1Name, algo2Name, gmName + "': " + std::string(ex.what()));
     } catch (...) {
-        ErrorLogger::instance().logGameManagerError(mapFile, algo1Name, algo2Name, "Unknown error occurred.");
+        ErrorLogger::instance().logGameManagerError(mapFile, algo1Name, algo2Name, gmName + "': Unknown error occurred.");
     }
 }
 
