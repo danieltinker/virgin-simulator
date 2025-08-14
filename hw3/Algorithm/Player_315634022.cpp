@@ -29,13 +29,13 @@ REGISTER_PLAYER(Player_315634022);
 #define DEBUG_EXIT() DEBUG_LOG("EXIT", "Function exit")
 
 Player_315634022::Player_315634022(int playerIndex,
-                                   std::size_t rows,
-                                   std::size_t cols,
+    std::size_t cols,
+    std::size_t rows,
                                    std::size_t max_steps,
                                    std::size_t num_shells)
   : playerIndex_(playerIndex),
-    rows_(rows),
-    cols_(cols),
+  cols_(cols),
+  rows_(rows),
     shells_(num_shells),
     first_(true)
 {

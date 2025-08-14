@@ -965,14 +965,22 @@ void Simulator::enqueueMapTasks(const CompetitionSetup& setup, size_t mi,
     size_t mSteps = setup.mapMaxSteps[mi], nShells = setup.mapNumShells[mi];
     const std::string mapFile = setup.validMapFiles[mi];
 
-    for (size_t i = 0; i + 1 < loadedAlgorithms_; ++i) {
-        for (size_t j = i + 1; j < loadedAlgorithms_; ++j) {
-            threadPool_->enqueue([this, &algoReg, &gmEntry, &realMap, cols, rows, mSteps, nShells, mapFile, i, j] {
+    for (size_t i = 0; i < loadedAlgorithms_; ++i) {
+        size_t j = (i+1 + (mi % (loadedAlgorithms_ - 1 ))) % loadedAlgorithms_;
+        if ( loadedAlgorithms_ % 2 == 0 && mi == loadedAlgorithms_/2 - 1 && i >= loadedAlgorithms_/2) {
+            continue;
+        }
+         threadPool_->enqueue([this, &algoReg, &gmEntry, &realMap, cols, rows, mSteps, nShells, mapFile, i, j] {
                 executeCompetitionGame(algoReg, gmEntry, realMap, cols, rows, mSteps, nShells, mapFile, i, j);
             });
         }
+
+        // for (size_t j = i + 1; j < loadedAlgorithms_; ++j) {
+        //     threadPool_->enqueue([this, &algoReg, &gmEntry, &realMap, cols, rows, mSteps, nShells, mapFile, i, j] {
+        //         executeCompetitionGame(algoReg, gmEntry, realMap, cols, rows, mSteps, nShells, mapFile, i, j);
+        //     });
+        // }
     }
-}
 
 void Simulator::executeCompetitionGame(AlgorithmRegistrar& algoReg, const auto& gmEntry,
                                       SatelliteView& realMap, size_t cols, size_t rows,
@@ -1021,12 +1029,7 @@ GameResult Simulator::runCompetitionGame(AlgorithmRegistrar& algoReg, const auto
 }
 
 size_t Simulator::calculateTotalGames(size_t numMaps) {
-    size_t totalGames = 0;
-    for (size_t i = 0; i + 1 < loadedAlgorithms_; ++i) {
-        for (size_t j = i + 1; j < loadedAlgorithms_; ++j) {
-            totalGames += numMaps;
-        }
-    }
+    size_t totalGames = numMaps * loadedAlgorithms_;
     return totalGames;
 }
 

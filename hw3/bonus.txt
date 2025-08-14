@@ -1,0 +1,15 @@
+*********************************************
+*****************   bonus   ***************** 
+*********************************************
+
+Logging:
+--debug flag option with Production Grade logs.
+
+Compilation:
+Tested with ASAN_FLAGS = -fsanitize=address -fno-omit-frame-pointer -O1
+
+MacOS Environment matching tester the tester's Machine:
+Setup my Macbook [VirtualBox]: WIN32 -> WSL - ubuntu 
+
+
+

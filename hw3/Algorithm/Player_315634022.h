@@ -9,8 +9,8 @@ namespace Algorithm_315634022 {
 class Player_315634022 : public Player {
 public:
     Player_315634022(int playerIndex,
-                     std::size_t rows,
-                     std::size_t cols,
+        std::size_t cols,
+        std::size_t rows,
                      std::size_t max_steps,
                      std::size_t num_shells);
 
@@ -19,7 +19,7 @@ public:
 
 private:
     int    playerIndex_;
-    std::size_t rows_, cols_;
+    std::size_t cols_,rows_;
     std::size_t shells_;
     bool   first_;
 };
